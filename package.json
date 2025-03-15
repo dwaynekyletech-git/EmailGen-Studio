@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@clerk/nextjs": "^5.0.0-beta.46",
+    "@clerk/nextjs": "^4.30.0",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@supabase/supabase-js": "^2.49.1",
@@ -25,7 +25,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^20.17.24",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "eslint": "^8",
