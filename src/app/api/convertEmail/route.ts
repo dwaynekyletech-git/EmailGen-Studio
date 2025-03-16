@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/backend/config/supabaseConfig';
 import { getAuth } from '@clerk/nextjs/server';
+import { createAIConversionService } from '@/backend/services/aiConversionService';
 
 export async function POST(request: NextRequest) {
   try {
@@ -127,32 +128,24 @@ export async function POST(request: NextRequest) {
       
       console.log('File uploaded successfully:', uploadData);
       
-      // Here you would integrate with an AI service to convert the design to HTML
-      // This is a placeholder for the actual AI conversion logic
-      // const aiApiKey = process.env.AI_API_KEY;
-      // const conversionResult = await aiConversionService(uploadData.path, aiApiKey);
+      // Initialize the AI conversion service
+      const aiConversionService = createAIConversionService();
       
-      // For now, return a placeholder HTML
-      const placeholderHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Converted Email</title>
-          <style>
-            body { font-family: Arial, sans-serif; }
-            .container { max-width: 600px; margin: 0 auto; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>Converted from ${file.name}</h1>
-            <p>This is a placeholder for the AI-converted email.</p>
-          </div>
-        </body>
-        </html>
-      `;
+      // Get conversion options from the request
+      const makeResponsive = formData.get('makeResponsive') !== 'false'; // Default to true
+      const optimizeForEmail = formData.get('optimizeForEmail') !== 'false'; // Default to true
+      const targetPlatform = (formData.get('targetPlatform') as 'sfmc' | 'generic') || 'sfmc';
+      
+      // Convert the design file to HTML
+      const conversionResult = await aiConversionService.convertDesignToHtml(
+        uploadData.path,
+        file.name,
+        {
+          makeResponsive,
+          optimizeForEmail,
+          targetPlatform
+        }
+      );
       
       try {
         console.log('Storing conversion result in Supabase');
@@ -170,7 +163,8 @@ export async function POST(request: NextRequest) {
           // Return success even if we couldn't store in the database
           return NextResponse.json({
             success: true,
-            html: placeholderHtml,
+            html: conversionResult.html,
+            metadata: conversionResult.metadata,
             conversionId: 'temp-' + Date.now(),
             note: 'Database storage was skipped. Please set up the database tables.'
           });
@@ -184,7 +178,7 @@ export async function POST(request: NextRequest) {
               user_id: userId,
               file_name: file.name,
               storage_path: uploadData.path,
-              html_content: placeholderHtml,
+              html_content: conversionResult.html,
               created_at: new Date().toISOString()
             }
           ])
@@ -196,7 +190,8 @@ export async function POST(request: NextRequest) {
           // Return success even if we couldn't store in the database
           return NextResponse.json({
             success: true,
-            html: placeholderHtml,
+            html: conversionResult.html,
+            metadata: conversionResult.metadata,
             conversionId: 'temp-' + Date.now(),
             error: `Failed to store conversion result: ${conversionError.message}`,
             note: 'The HTML was generated but could not be stored in the database.'
@@ -207,7 +202,8 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({
           success: true,
-          html: placeholderHtml,
+          html: conversionResult.html,
+          metadata: conversionResult.metadata,
           conversionId: conversionData[0].id
         });
       } catch (dbError) {
@@ -216,7 +212,8 @@ export async function POST(request: NextRequest) {
         // Return success even if we couldn't store in the database
         return NextResponse.json({
           success: true,
-          html: placeholderHtml,
+          html: conversionResult.html,
+          metadata: conversionResult.metadata,
           conversionId: 'temp-' + Date.now(),
           error: `Database operation failed: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`,
           note: 'The HTML was generated but could not be stored in the database.'

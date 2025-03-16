@@ -9,11 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.18.0",
     "@clerk/nextjs": "^4.30.0",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@supabase/supabase-js": "^2.49.1",
     "@uiw/react-codemirror": "^4.23.10",
+    "ai": "^3.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.482.0",
