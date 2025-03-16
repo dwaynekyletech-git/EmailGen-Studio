@@ -70,10 +70,10 @@ EmailGen Studio is a powerful tool designed for email developers, marketing team
 
 ## AI-Powered Design to HTML Conversion
 
-EmailGen Studio uses Claude 3.7 Sonnet to convert design files (PSD, XD, FIG) into responsive HTML emails optimized for Salesforce Marketing Cloud. The conversion process follows these steps:
+EmailGen Studio uses Google's Gemini Flash 2.0 to convert design files (PSD, XD, FIG, PNG, JPG) into responsive HTML emails optimized for Salesforce Marketing Cloud. The conversion process follows these steps:
 
 1. **File Upload**: Users upload their design files through an intuitive drag-and-drop interface.
-2. **AI Analysis**: The AI analyzes the design file to extract visual elements, dimensions, colors, typography, and layout information.
+2. **Visual Analysis**: Gemini's vision capabilities analyze the design file to understand the visual elements, layout, colors, and typography.
 3. **HTML Generation**: The AI generates responsive HTML email code that is compatible with email clients and follows best practices.
 4. **Code Review**: Users can review and edit the generated HTML in a live code editor.
 5. **QA Validation**: The email HTML is processed through custom QA checks for accessibility, compliance, and brand guidelines.
@@ -86,7 +86,7 @@ To use the AI conversion feature, you need to set up the following environment v
 
 ```
 # AI Services
-ANTHROPIC_API_KEY=your_anthropic_api_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
-You can get an API key from [Anthropic](https://www.anthropic.com/).
+You can get an API key from [Google AI Studio](https://makersuite.google.com/).

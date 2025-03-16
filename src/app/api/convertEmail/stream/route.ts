@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import supabase from '@/backend/config/supabaseConfig';
 import { getAuth } from '@clerk/nextjs/server';
-import { createAIConversionService } from '@/backend/services/aiConversionService';
+import { createGeminiConversionService } from '@/backend/services/geminiConversionService';
 
 export const runtime = 'edge';
 
@@ -29,12 +29,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Check file type
-    const validTypes = ['.psd', '.xd', '.fig'];
+    const validTypes = ['.psd', '.xd', '.fig', '.png', '.jpg', '.jpeg'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!validTypes.includes(fileType)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid file type. Supported types: PSD, XD, FIG' }),
+        JSON.stringify({ error: 'Invalid file type. Supported types: PSD, XD, FIG, PNG, JPG' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Initialize the AI conversion service
-    const aiConversionService = createAIConversionService();
+    // Initialize the Gemini conversion service
+    const geminiConversionService = createGeminiConversionService();
     
     // Get conversion options from the request
     const makeResponsive = formData.get('makeResponsive') !== 'false'; // Default to true
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     const targetPlatform = (formData.get('targetPlatform') as 'sfmc' | 'generic') || 'sfmc';
     
     // Stream the conversion process
-    return aiConversionService.streamConversion(
+    return geminiConversionService.streamConversion(
       uploadData.path,
       file.name,
       {

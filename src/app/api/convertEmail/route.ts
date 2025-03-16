@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/backend/config/supabaseConfig';
 import { getAuth } from '@clerk/nextjs/server';
-import { createAIConversionService } from '@/backend/services/aiConversionService';
+import { createGeminiConversionService } from '@/backend/services/geminiConversionService';
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,14 +90,14 @@ export async function POST(request: NextRequest) {
     console.log('File received:', file.name, 'Size:', file.size);
     
     // Check file type
-    const validTypes = ['.psd', '.xd', '.fig'];
+    const validTypes = ['.psd', '.xd', '.fig', '.png', '.jpg', '.jpeg'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     console.log('File type:', fileType);
     
     if (!validTypes.includes(fileType)) {
       return NextResponse.json(
-        { error: 'Invalid file type. Supported types: PSD, XD, FIG' },
+        { error: 'Invalid file type. Supported types: PSD, XD, FIG, PNG, JPG' },
         { status: 400 }
       );
     }
@@ -128,8 +128,8 @@ export async function POST(request: NextRequest) {
       
       console.log('File uploaded successfully:', uploadData);
       
-      // Initialize the AI conversion service
-      const aiConversionService = createAIConversionService();
+      // Initialize the Gemini conversion service
+      const geminiConversionService = createGeminiConversionService();
       
       // Get conversion options from the request
       const makeResponsive = formData.get('makeResponsive') !== 'false'; // Default to true
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       const targetPlatform = (formData.get('targetPlatform') as 'sfmc' | 'generic') || 'sfmc';
       
       // Convert the design file to HTML
-      const conversionResult = await aiConversionService.convertDesignToHtml(
+      const conversionResult = await geminiConversionService.convertDesignToHtml(
         uploadData.path,
         file.name,
         {
