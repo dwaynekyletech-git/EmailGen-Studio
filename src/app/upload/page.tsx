@@ -2,13 +2,17 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { convertDesignFile } from "@/lib/api-service";
 
 export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: any) => {
     e.preventDefault();
     setIsDragging(true);
   };
@@ -17,30 +21,58 @@ export default function UploadPage() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: any) => {
     e.preventDefault();
     setIsDragging(false);
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
       setFile(droppedFile);
+      setUploadError(null);
+      setUploadWarning(null);
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: any) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
+      setUploadError(null);
+      setUploadWarning(null);
     }
   };
 
   const handleUpload = async () => {
     if (!file) return;
 
-    // Here we would normally upload the file to the server
-    // For now, we'll just simulate a successful upload
-    setTimeout(() => {
+    try {
+      setIsUploading(true);
+      setUploadError(null);
+      setUploadWarning(null);
+      
+      // Call the API service to convert the file
+      const result = await convertDesignFile(file);
+      
+      // Check for warnings in the response
+      if (result.note) {
+        setUploadWarning(result.note);
+      }
+      
+      if (result.error) {
+        setUploadWarning(`Warning: ${result.error}`);
+      }
+      
+      // Store the HTML content and conversion ID in localStorage for use in the editor
+      localStorage.setItem('emailHtml', result.html);
+      localStorage.setItem('conversionId', result.conversionId);
+      
+      // Navigate to the editor
       router.push("/editor");
-    }, 1500);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error instanceof Error ? error.message : 'Failed to upload file');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -68,9 +100,10 @@ export default function UploadPage() {
             </p>
             <button
               onClick={handleUpload}
-              className="px-4 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              disabled={isUploading}
+              className="px-4 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Convert to HTML
+              {isUploading ? "Converting..." : "Convert to HTML"}
             </button>
           </div>
         ) : (
@@ -97,6 +130,18 @@ export default function UploadPage() {
           </div>
         )}
       </div>
+      
+      {uploadWarning && (
+        <div className="mt-4 p-3 bg-yellow-100 text-yellow-700 rounded-md dark:bg-yellow-900/30 dark:text-yellow-400">
+          {uploadWarning}
+        </div>
+      )}
+      
+      {uploadError && (
+        <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
+          {uploadError}
+        </div>
+      )}
     </div>
   );
 } 
