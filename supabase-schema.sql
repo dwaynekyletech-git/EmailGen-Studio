@@ -4,7 +4,7 @@
 -- Table for storing user information and roles
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
-  clerk_id VARCHAR(255) UNIQUE NOT NULL,
+  clerk_id TEXT UNIQUE NOT NULL,
   email VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL, -- Possible values: 'Administrator', 'Developer', 'Marketer'
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -99,18 +99,18 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own data" 
   ON users 
   FOR SELECT 
-  USING (clerk_id = auth.uid());
+  USING (clerk_id = auth.uid()::text);
 
 -- Policy for email_versions table
 CREATE POLICY "Users can view their own email versions" 
   ON email_versions 
   FOR SELECT 
-  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 CREATE POLICY "Users can insert their own email versions" 
   ON email_versions 
   FOR INSERT 
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 -- Policy for qa_rules table
 CREATE POLICY "Everyone can view QA rules" 
@@ -122,7 +122,7 @@ CREATE POLICY "Only administrators can modify QA rules"
   ON qa_rules 
   FOR ALL 
   USING (
-    auth.uid() IN (
+    auth.uid()::text IN (
       SELECT clerk_id FROM users WHERE role = 'Administrator'
     )
   );
@@ -134,7 +134,7 @@ CREATE POLICY "Users can view change logs for their emails"
   USING (
     email_version_id IN (
       SELECT id FROM email_versions WHERE user_id IN (
-        SELECT id FROM users WHERE clerk_id = auth.uid()
+        SELECT id FROM users WHERE clerk_id = auth.uid()::text
       )
     )
   );
@@ -143,40 +143,40 @@ CREATE POLICY "Users can view change logs for their emails"
 CREATE POLICY "Users can view their own conversions" 
   ON email_conversions 
   FOR SELECT 
-  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 CREATE POLICY "Users can insert their own conversions" 
   ON email_conversions 
   FOR INSERT 
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 -- Policy for qa_validation_results table
 CREATE POLICY "Users can view their own validation results" 
   ON qa_validation_results 
   FOR SELECT 
-  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 CREATE POLICY "Users can insert their own validation results" 
   ON qa_validation_results 
   FOR INSERT 
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 -- Policy for email_deployments table
 CREATE POLICY "Users can view their own deployments" 
   ON email_deployments 
   FOR SELECT 
-  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 CREATE POLICY "Users can insert their own deployments" 
   ON email_deployments 
   FOR INSERT 
-  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 -- Policy for notifications table
 CREATE POLICY "Users can view their own notifications" 
   ON notifications 
   FOR SELECT 
-  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+  USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_id);

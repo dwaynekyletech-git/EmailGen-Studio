@@ -8,7 +8,7 @@ BEGIN
     -- Create users table
     CREATE TABLE users (
       id SERIAL PRIMARY KEY,
-      clerk_id VARCHAR(255) UNIQUE NOT NULL,
+      clerk_id TEXT UNIQUE NOT NULL,
       email VARCHAR(255) NOT NULL,
       role VARCHAR(50) NOT NULL, -- Possible values: 'Administrator', 'Developer', 'Marketer'
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -21,7 +21,7 @@ BEGIN
     CREATE POLICY "Users can view their own data" 
       ON users 
       FOR SELECT 
-      USING (clerk_id = auth.uid());
+      USING (clerk_id = auth.uid()::text);
       
     -- Create index for users table
     CREATE INDEX idx_users_clerk_id ON users(clerk_id);
@@ -50,12 +50,12 @@ BEGIN
     CREATE POLICY "Users can view their own email versions" 
       ON email_versions 
       FOR SELECT 
-      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     CREATE POLICY "Users can insert their own email versions" 
       ON email_versions 
       FOR INSERT 
-      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     -- Create indexes for email_versions table
     CREATE INDEX idx_email_versions_user_id ON email_versions(user_id);
@@ -90,7 +90,7 @@ BEGIN
       ON qa_rules 
       FOR ALL 
       USING (
-        auth.uid() IN (
+        auth.uid()::text IN (
           SELECT clerk_id FROM users WHERE role = 'Administrator'
         )
       );
@@ -123,7 +123,7 @@ BEGIN
       USING (
         email_version_id IN (
           SELECT id FROM email_versions WHERE user_id IN (
-            SELECT id FROM users WHERE clerk_id = auth.uid()
+            SELECT id FROM users WHERE clerk_id = auth.uid()::text
           )
         )
       );
@@ -158,12 +158,12 @@ BEGIN
         CREATE POLICY "Users can view their own conversions" 
           ON email_conversions 
           FOR SELECT 
-          USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+          USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
           
         CREATE POLICY "Users can insert their own conversions" 
           ON email_conversions 
           FOR INSERT 
-          WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+          WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       END IF;
     EXCEPTION
       WHEN OTHERS THEN
@@ -188,12 +188,12 @@ BEGIN
     CREATE POLICY "Users can view their own conversions" 
       ON email_conversions 
       FOR SELECT 
-      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     CREATE POLICY "Users can insert their own conversions" 
       ON email_conversions 
       FOR INSERT 
-      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     -- Create index for email_conversions table
     CREATE INDEX idx_email_conversions_user_id ON email_conversions(user_id);
@@ -225,12 +225,12 @@ BEGIN
         CREATE POLICY "Users can view their own validation results" 
           ON qa_validation_results 
           FOR SELECT 
-          USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+          USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
           
         CREATE POLICY "Users can insert their own validation results" 
           ON qa_validation_results 
           FOR INSERT 
-          WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+          WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       END IF;
     EXCEPTION
       WHEN OTHERS THEN
@@ -254,12 +254,12 @@ BEGIN
     CREATE POLICY "Users can view their own validation results" 
       ON qa_validation_results 
       FOR SELECT 
-      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     CREATE POLICY "Users can insert their own validation results" 
       ON qa_validation_results 
       FOR INSERT 
-      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     -- Create index for qa_validation_results table
     CREATE INDEX idx_qa_validation_results_user_id ON qa_validation_results(user_id);
@@ -289,12 +289,12 @@ BEGIN
     CREATE POLICY "Users can view their own deployments" 
       ON email_deployments 
       FOR SELECT 
-      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     CREATE POLICY "Users can insert their own deployments" 
       ON email_deployments 
       FOR INSERT 
-      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     -- Create index for email_deployments table
     CREATE INDEX idx_email_deployments_user_id ON email_deployments(user_id);
@@ -325,7 +325,7 @@ BEGIN
     CREATE POLICY "Users can view their own notifications" 
       ON notifications 
       FOR SELECT 
-      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()));
+      USING (user_id IN (SELECT id FROM users WHERE clerk_id = auth.uid()::text));
       
     -- Create indexes for notifications table
     CREATE INDEX idx_notifications_user_id ON notifications(user_id);

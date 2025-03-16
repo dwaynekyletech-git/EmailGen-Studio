@@ -73,6 +73,10 @@ If you encounter any issues during the setup:
 3. Verify that the Supabase project is properly set up
 4. Check that the environment variables in your `.env.local` file match your Supabase project
 
+### Common Errors
+
+- **Error: operator does not exist: character varying = uuid**: This occurs because Supabase's `auth.uid()` returns a UUID, but our `clerk_id` column is a text type. The scripts have been updated to cast the UUID to text using `auth.uid()::text` in all policy definitions.
+
 ## Next Steps
 
 After setting up the database, you should:
