@@ -6,16 +6,16 @@ import { getAuth } from '@clerk/nextjs/server';
 export async function POST(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
     
-    const { emailId, htmlContent, metadata } = await request.json();
+    const { emailId, htmlContent, metadata = {} } = await request.json();
     
     if (!emailId || !htmlContent) {
       return NextResponse.json(
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     // Add user ID to metadata
     const metadataWithUser = {
       ...metadata,
-      userId,
+      userId: clerkUserId,
     };
     
     const result = await versionControlService.saveVersion(emailId, htmlContent, metadataWithUser);
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -90,9 +90,9 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -108,6 +108,7 @@ export async function PUT(request: NextRequest) {
       );
     }
     
+    // Add user ID to the request
     const result = await versionControlService.rollbackToVersion(emailId, versionNumber);
     
     return NextResponse.json(result);

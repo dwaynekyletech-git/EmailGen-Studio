@@ -5,9 +5,18 @@ interface VersionMetadata {
   comment?: string;
   rollback_from?: number;
   userId?: string;
+  email?: string;
+  title?: string;
   [key: string]: any;
 }
 
+/**
+ * Saves a new version of an email
+ * @param emailId The ID of the email
+ * @param htmlContent The HTML content of the email
+ * @param metadata Additional metadata for the version
+ * @returns Object with success status, version ID, and version number
+ */
 export async function saveVersion(emailId: string, htmlContent: string, metadata: VersionMetadata = {}) {
   try {
     // Ensure we have a userId
@@ -15,12 +24,53 @@ export async function saveVersion(emailId: string, htmlContent: string, metadata
       throw new Error('User ID is required');
     }
     
+    // Get the user ID from the users table
+    let { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('clerk_id', metadata.userId)
+      .single();
+      
+    if (userError) {
+      console.error('User fetch error:', userError);
+      
+      // If the user doesn't exist, create a new user
+      if (userError.code === 'PGRST116') {
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert([
+            {
+              clerk_id: metadata.userId,
+              email: metadata.email || 'unknown@example.com',
+              role: 'Developer', // Default role
+              created_at: new Date().toISOString()
+            }
+          ])
+          .select();
+          
+        if (createError) {
+          console.error('User creation error:', createError);
+          throw new Error('Failed to create user');
+        }
+        
+        userData = newUser[0];
+      } else {
+        throw new Error('Failed to fetch user');
+      }
+    }
+    
+    if (!userData) {
+      throw new Error('User data is null');
+    }
+    
+    const userId = userData.id;
+    
     // Get the current version number
     const { data: versions, error: versionsError } = await supabase
       .from('email_versions')
-      .select('version_number')
+      .select('version')
       .eq('email_id', emailId)
-      .order('version_number', { ascending: false })
+      .order('version', { ascending: false })
       .limit(1);
       
     if (versionsError) {
@@ -28,7 +78,7 @@ export async function saveVersion(emailId: string, htmlContent: string, metadata
       throw new Error('Failed to fetch current version');
     }
     
-    const nextVersion = versions && versions.length > 0 ? versions[0].version_number + 1 : 1;
+    const nextVersion = versions && versions.length > 0 ? versions[0].version + 1 : 1;
     
     // Save the new version
     const { data, error } = await supabase
@@ -36,10 +86,10 @@ export async function saveVersion(emailId: string, htmlContent: string, metadata
       .insert([
         {
           email_id: emailId,
-          user_id: metadata.userId,
-          version_number: nextVersion,
+          user_id: userId,
+          title: metadata.title || `Version ${nextVersion}`,
           html_content: htmlContent,
-          metadata,
+          version: nextVersion,
           created_at: new Date().toISOString()
         }
       ])
@@ -50,8 +100,11 @@ export async function saveVersion(emailId: string, htmlContent: string, metadata
       throw new Error('Failed to save version');
     }
     
+    // Create a change log entry
+    await createChangeLog(data[0].id, metadata.comment || `Version ${nextVersion} created`);
+    
     // Trigger notification
-    await triggerVersionNotification(emailId, nextVersion, metadata);
+    await triggerVersionNotification(emailId, nextVersion, userId, metadata);
     
     return {
       success: true,
@@ -65,13 +118,18 @@ export async function saveVersion(emailId: string, htmlContent: string, metadata
   }
 }
 
+/**
+ * Gets all versions of an email
+ * @param emailId The ID of the email
+ * @returns Object with success status and versions array
+ */
 export async function getVersions(emailId: string) {
   try {
     const { data, error } = await supabase
       .from('email_versions')
-      .select('*')
+      .select('*, users(email)')
       .eq('email_id', emailId)
-      .order('version_number', { ascending: false });
+      .order('version', { ascending: false });
       
     if (error) {
       console.error('Versions fetch error:', error);
@@ -89,13 +147,19 @@ export async function getVersions(emailId: string) {
   }
 }
 
+/**
+ * Gets a specific version of an email
+ * @param emailId The ID of the email
+ * @param versionNumber The version number to get
+ * @returns Object with success status and version data
+ */
 export async function getVersion(emailId: string, versionNumber: number) {
   try {
     const { data, error } = await supabase
       .from('email_versions')
-      .select('*')
+      .select('*, users(email)')
       .eq('email_id', emailId)
-      .eq('version_number', versionNumber)
+      .eq('version', versionNumber)
       .single();
       
     if (error) {
@@ -103,9 +167,22 @@ export async function getVersion(emailId: string, versionNumber: number) {
       throw new Error('Failed to fetch version');
     }
     
+    // Get change logs for this version
+    const { data: changeLogs, error: logsError } = await supabase
+      .from('change_logs')
+      .select('*')
+      .eq('email_version_id', data.id)
+      .order('created_at', { ascending: false });
+      
+    if (logsError) {
+      console.error('Change logs fetch error:', logsError);
+      // Continue anyway, as this is non-critical
+    }
+    
     return {
       success: true,
-      version: data
+      version: data,
+      changeLogs: changeLogs || []
     };
     
   } catch (error) {
@@ -114,6 +191,12 @@ export async function getVersion(emailId: string, versionNumber: number) {
   }
 }
 
+/**
+ * Rolls back to a specific version of an email
+ * @param emailId The ID of the email
+ * @param versionNumber The version number to roll back to
+ * @returns Object with success status, message, and new version number
+ */
 export async function rollbackToVersion(emailId: string, versionNumber: number) {
   try {
     // Get the version to roll back to
@@ -121,7 +204,7 @@ export async function rollbackToVersion(emailId: string, versionNumber: number) 
       .from('email_versions')
       .select('*')
       .eq('email_id', emailId)
-      .eq('version_number', versionNumber)
+      .eq('version', versionNumber)
       .single();
       
     if (versionError || !versionData) {
@@ -134,9 +217,10 @@ export async function rollbackToVersion(emailId: string, versionNumber: number) 
       emailId, 
       versionData.html_content, 
       {
-        ...versionData.metadata,
-        rollback_from: versionNumber,
-        comment: `Rollback to version ${versionNumber}`
+        userId: versionData.user_id,
+        title: `Rollback to version ${versionNumber}`,
+        comment: `Rolled back to version ${versionNumber}`,
+        rollback_from: versionNumber
       }
     );
     
@@ -152,13 +236,42 @@ export async function rollbackToVersion(emailId: string, versionNumber: number) 
   }
 }
 
-async function triggerVersionNotification(emailId: string, versionNumber: number, metadata: VersionMetadata) {
-  // This is a placeholder for notification logic
-  // In a real implementation, you might:
-  // 1. Send an email notification
-  // 2. Trigger a webhook
-  // 3. Update a notification table in the database
-  
+/**
+ * Creates a change log entry for a version
+ * @param emailVersionId The ID of the email version
+ * @param changeDescription Description of the change
+ */
+async function createChangeLog(emailVersionId: number, changeDescription: string) {
+  try {
+    const { error } = await supabase
+      .from('change_logs')
+      .insert([
+        {
+          email_version_id: emailVersionId,
+          change_description: changeDescription,
+          created_at: new Date().toISOString()
+        }
+      ]);
+      
+    if (error) {
+      console.error('Change log error:', error);
+      // Don't throw, as this is a non-critical operation
+    }
+    
+  } catch (error) {
+    console.error('Change log error:', error);
+    // Don't throw, as this is a non-critical operation
+  }
+}
+
+/**
+ * Triggers a notification for a version change
+ * @param emailId The ID of the email
+ * @param versionNumber The version number
+ * @param userId The user ID
+ * @param metadata Additional metadata
+ */
+async function triggerVersionNotification(emailId: string, versionNumber: number, userId: number, metadata: VersionMetadata) {
   try {
     const { error } = await supabase
       .from('notifications')
@@ -166,11 +279,11 @@ async function triggerVersionNotification(emailId: string, versionNumber: number
         {
           type: 'version_created',
           email_id: emailId,
-          user_id: metadata.userId,
+          user_id: userId,
           version_number: versionNumber,
           metadata,
-          created_at: new Date().toISOString(),
-          is_read: false
+          is_read: false,
+          created_at: new Date().toISOString()
         }
       ]);
       

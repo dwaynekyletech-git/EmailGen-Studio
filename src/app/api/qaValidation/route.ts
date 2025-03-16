@@ -5,7 +5,7 @@ import { getAuth } from '@clerk/nextjs/server';
 // Define QA rules interface
 interface QARule {
   id: string;
-  name: string;
+  rule_name: string;
   description: string;
   rule_type: string;
   rule_pattern: string;
@@ -16,14 +16,64 @@ interface QARule {
 export async function POST(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    
+    // Get the user ID from the users table
+    let { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('clerk_id', clerkUserId)
+      .single();
+      
+    if (userError) {
+      console.error('User fetch error:', userError);
+      
+      // If the user doesn't exist, create a new user
+      if (userError.code === 'PGRST116') {
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert([
+            {
+              clerk_id: clerkUserId,
+              email: 'unknown@example.com', // We don't have the email here
+              role: 'Developer', // Default role
+              created_at: new Date().toISOString()
+            }
+          ])
+          .select();
+          
+        if (createError) {
+          console.error('User creation error:', createError);
+          return NextResponse.json(
+            { error: 'Failed to create user' },
+            { status: 500 }
+          );
+        }
+        
+        userData = newUser[0];
+      } else {
+        return NextResponse.json(
+          { error: 'Failed to fetch user' },
+          { status: 500 }
+        );
+      }
+    }
+    
+    if (!userData) {
+      return NextResponse.json(
+        { error: 'User data is null' },
+        { status: 500 }
+      );
+    }
+    
+    const userId = userData.id;
     
     const { html, ruleIds } = await request.json();
     
@@ -92,7 +142,7 @@ export async function POST(request: NextRequest) {
       
       return {
         ruleId: rule.id,
-        ruleName: rule.name,
+        ruleName: rule.rule_name,
         description: rule.description,
         severity: rule.severity,
         isPassing,
@@ -142,12 +192,27 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+    
+    // Get the user from the users table to check role
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, role')
+      .eq('clerk_id', clerkUserId)
+      .single();
+      
+    if (userError) {
+      console.error('User fetch error:', userError);
+      return NextResponse.json(
+        { error: 'Failed to fetch user' },
+        { status: 500 }
       );
     }
     
@@ -170,7 +235,10 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    return NextResponse.json({ rules });
+    return NextResponse.json({ 
+      rules,
+      userRole: userData.role // Include the user's role for client-side permission checks
+    });
     
   } catch (error) {
     console.error('QA rules fetch error:', error);

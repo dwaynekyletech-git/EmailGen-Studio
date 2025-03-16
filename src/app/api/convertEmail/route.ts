@@ -5,16 +5,76 @@ import { getAuth } from '@clerk/nextjs/server';
 export async function POST(request: NextRequest) {
   try {
     // Check authentication using getAuth instead of auth
-    const { userId } = getAuth(request);
+    const { userId: clerkUserId } = getAuth(request);
     
-    if (!userId) {
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
     
-    console.log('User authenticated:', userId);
+    console.log('User authenticated:', clerkUserId);
+    
+    // Get the user ID from the users table
+    let { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('clerk_id', clerkUserId)
+      .single();
+      
+    if (userError) {
+      console.error('User fetch error:', userError);
+      
+      // If the user doesn't exist, create a new user
+      if (userError.code === 'PGRST116') {
+        // Try to get the user's email from Clerk
+        let userEmail = 'unknown@example.com';
+        try {
+          // This is a placeholder - in a real implementation, you would use Clerk's API to get the user's email
+          // const clerkUser = await clerkClient.users.getUser(clerkUserId);
+          // userEmail = clerkUser.emailAddresses[0].emailAddress;
+        } catch (emailError) {
+          console.error('Error getting user email:', emailError);
+        }
+        
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert([
+            {
+              clerk_id: clerkUserId,
+              email: userEmail,
+              role: 'Developer', // Default role
+              created_at: new Date().toISOString()
+            }
+          ])
+          .select();
+          
+        if (createError) {
+          console.error('User creation error:', createError);
+          return NextResponse.json(
+            { error: 'Failed to create user' },
+            { status: 500 }
+          );
+        }
+        
+        userData = newUser[0];
+      } else {
+        return NextResponse.json(
+          { error: 'Failed to fetch user' },
+          { status: 500 }
+        );
+      }
+    }
+    
+    if (!userData) {
+      return NextResponse.json(
+        { error: 'User data is null' },
+        { status: 500 }
+      );
+    }
+    
+    const userId = userData.id;
     
     const formData = await request.formData();
     const file = formData.get('file') as File;
