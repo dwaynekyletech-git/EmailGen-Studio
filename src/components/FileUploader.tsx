@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+// Create a global variable to store HTML until it can be used
+if (typeof window !== 'undefined') {
+  (window as any).__EMAIL_HTML_CONTENT__ = null;
+}
 
 interface FileUploaderProps {
   onConversionComplete?: (html: string, metadata: any, conversionId: string) => void;
@@ -54,93 +59,91 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     }
   };
 
-  const handleFileUpload = async (file: File) => {
-    // Check file type
-    const validTypes = ['.png', '.jpg', '.jpeg'];
-    const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!validTypes.includes(fileType)) {
-      setError(`Invalid file type. Supported types: PNG, JPG`);
-      if (onConversionError) {
-        onConversionError(`Invalid file type. Supported types: PNG, JPG`);
-      }
+  const handleFileUpload = async (file: File): Promise<void> => {
+    if (!file) {
+      setError('Please select a file');
       return;
     }
-
-    setIsUploading(true);
-    setError(null);
-    setUploadProgress(0);
-    setConversionProgress(0);
-
+    
     try {
+      setIsUploading(true);
+      setError(null);
+      setUploadProgress(0);
+      setConversionProgress(0);
+      
+      // Create form data for the API request
       const formData = new FormData();
       formData.append('file', file);
       formData.append('makeResponsive', makeResponsive.toString());
       formData.append('optimizeForEmail', optimizeForEmail.toString());
       formData.append('targetPlatform', targetPlatform);
-
-      // Simulate upload progress
-      const uploadInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(uploadInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 300);
-
+      
+      // Log the request
+      console.log('Sending file to API:', file.name, file.type, file.size);
+      
+      // Post to the ConvertEmail API route
       const response = await fetch('/api/convertEmail', {
         method: 'POST',
         body: formData,
       });
-
-      clearInterval(uploadInterval);
-      setUploadProgress(100);
-
-      // Simulate conversion progress
-      const conversionInterval = setInterval(() => {
-        setConversionProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(conversionInterval);
-            return 90;
-          }
-          return prev + 5;
-        });
-      }, 500);
-
+      
+      // Handle API response
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to convert file');
       }
-
+      
+      // Process successful response
       const data = await response.json();
-      clearInterval(conversionInterval);
-      setConversionProgress(100);
-
-      if (data.success) {
-        if (onConversionComplete) {
-          onConversionComplete(data.html, data.metadata, data.conversionId);
-        } else {
-          // If no callback is provided, redirect to the editor with the HTML
-          router.push(`/editor?html=${encodeURIComponent(data.html)}&conversionId=${data.conversionId}`);
+      console.log('API Response SUCCESS, html length:', data.html?.length);
+      
+      if (data.html) {
+        // Generate a unique ID for this conversion
+        const conversionId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        console.log('Generated conversion ID:', conversionId);
+        
+        // MULTIPLE STORAGE APPROACH - using all available methods for redundancy
+        try {
+          // 1. Store in sessionStorage with the conversion ID
+          sessionStorage.setItem(`html_${conversionId}`, data.html);
+          
+          // 2. Store in sessionStorage with a fixed key as fallback
+          sessionStorage.setItem('emailHtml', data.html);
+          
+          // 3. Set a cookie with the conversion ID
+          document.cookie = `emailConversionId=${conversionId}; path=/; max-age=300`;
+          
+          // 4. Store in localStorage through a transport object
+          const transport = {
+            html: data.html,
+            timestamp: Date.now(),
+            id: conversionId
+          };
+          localStorage.setItem('emailHtmlTransport', JSON.stringify(transport));
+          
+          // 5. Set global variable
+          if (typeof window !== 'undefined') {
+            (window as any).__EMAIL_HTML_CONTENT__ = data.html;
+          }
+          
+          // DELAY 500ms to ensure storage is complete before navigation
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+        } catch (storageError) {
+          console.error('Failed to store HTML:', storageError);
         }
+        
+        // Redirect to editor page with the conversion ID
+        console.log('Redirecting to editor page with ID:', conversionId);
+        router.push(`/editor?id=${conversionId}`);
       } else {
-        throw new Error(data.error || 'Conversion failed');
+        throw new Error('No HTML content in the response');
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      if (onConversionError) {
-        onConversionError(errorMessage);
-      }
+    } catch (error) {
+      console.error('File upload error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to upload file');
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      setConversionProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setIsUploading(true); // Keep this true to prevent multiple clicks
     }
   };
 

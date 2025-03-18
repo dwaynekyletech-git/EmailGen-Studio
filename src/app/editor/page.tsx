@@ -9,7 +9,8 @@ import { saveEmailVersion } from "@/lib/api-service";
 import { useUser } from "@clerk/nextjs";
 import { v4 as uuidv4 } from 'uuid';
 
-const sampleHtml = `<!DOCTYPE html>
+// Default HTML to use if no uploaded HTML is available
+const defaultHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -48,11 +49,11 @@ const sampleHtml = `<!DOCTYPE html>
     </div>
     <div class="content">
       <p>Hello there,</p>
-      <p>Thank you for subscribing to our newsletter. We're excited to share the latest updates with you.</p>
+      <p>Upload a design image to convert it to HTML.</p>
       <p>Best regards,<br>The Team</p>
     </div>
     <div class="footer">
-      <p>&copy; 2024 Company Name. All rights reserved.</p>
+      <p>&copy; 2024 EmailGen Studio. All rights reserved.</p>
       <p><a href="#">Unsubscribe</a> | <a href="#">View in browser</a></p>
     </div>
   </div>
@@ -60,22 +61,101 @@ const sampleHtml = `<!DOCTYPE html>
 </html>`;
 
 export default function EditorPage() {
-  const [code, setCode] = useState(sampleHtml);
+  const [code, setCode] = useState(defaultHtml);
   const [isMobileView, setIsMobileView] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [emailId, setEmailId] = useState<string | null>(null);
+  const [loadingState, setLoadingState] = useState<'loading' | 'success' | 'error' | 'no-data'>('loading');
   const { user } = useUser();
 
   useEffect(() => {
-    // Check if there's HTML from the upload page
-    const uploadedHtml = localStorage.getItem('emailHtml');
-    const conversionId = localStorage.getItem('conversionId');
+    // Function to load HTML content
+    const loadHtml = () => {
+      try {
+        setLoadingState('loading');
+        
+        // Check URL for conversion ID
+        const urlParams = new URLSearchParams(window.location.search);
+        const conversionId = urlParams.get('id');
+        
+        // Try multiple methods to get the HTML
+        
+        // 1. ID-based approach (primary method)
+        let idBasedHtml = null;
+        if (conversionId) {
+          idBasedHtml = sessionStorage.getItem(`html_${conversionId}`);
+        } else {
+          // Try to get conversion ID from cookie
+          const cookies = document.cookie.split(';');
+          let cookieId = null;
+          for (const cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'emailConversionId') {
+              cookieId = value;
+              break;
+            }
+          }
+          
+          if (cookieId) {
+            idBasedHtml = sessionStorage.getItem(`html_${cookieId}`);
+          }
+        }
+        
+        // 2. Check for HTML in global variable
+        const globalHtml = typeof window !== 'undefined' ? (window as any).__EMAIL_HTML_CONTENT__ : null;
+        
+        // 3. Check fixed key in sessionStorage
+        const fixedKeyHtml = sessionStorage.getItem('emailHtml');
+        
+        // 4. Check localStorage transport
+        let transportHtml = null;
+        try {
+          const transportData = localStorage.getItem('emailHtmlTransport');
+          if (transportData) {
+            const parsed = JSON.parse(transportData);
+            transportHtml = parsed.html;
+          }
+        } catch (e) {
+          console.error('Failed to parse transport data:', e);
+        }
+        
+        // Select HTML source in order of preference
+        let selectedHtml: string | null = null;
+        
+        if (idBasedHtml) {
+          selectedHtml = idBasedHtml;
+        } else if (globalHtml) {
+          selectedHtml = globalHtml;
+          // Clean up
+          (window as any).__EMAIL_HTML_CONTENT__ = null;
+        } else if (fixedKeyHtml) {
+          selectedHtml = fixedKeyHtml;
+          // Clean up
+          sessionStorage.removeItem('emailHtml');
+        } else if (transportHtml) {
+          selectedHtml = transportHtml;
+          // Clean up
+          localStorage.removeItem('emailHtmlTransport');
+        }
+        
+        // Set the HTML
+        if (selectedHtml) {
+          setCode(selectedHtml);
+          setLoadingState('success');
+        } else {
+          setLoadingState('no-data');
+        }
+      } catch (error) {
+        console.error('Error loading HTML:', error);
+        setLoadingState('error');
+        setSaveError(error instanceof Error ? error.message : 'Unknown error');
+      }
+    };
     
-    if (uploadedHtml) {
-      setCode(uploadedHtml);
-    }
+    // Load HTML with a small delay to ensure storage is settled
+    setTimeout(loadHtml, 100);
     
     // Generate or retrieve an email ID
     const storedEmailId = localStorage.getItem('emailId');
@@ -128,6 +208,26 @@ export default function EditorPage() {
   return (
     <div className="h-full">
       <h1 className="text-3xl font-bold mb-6">Email Editor</h1>
+      
+      {loadingState === 'error' && (
+        <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
+          <p className="font-medium">Error Loading HTML</p>
+          <p>{saveError || 'There was a problem loading the converted HTML. Please try again.'}</p>
+          <Link href="/" className="inline-block mt-2 px-4 py-2 bg-red-200 dark:bg-red-800 rounded-md">
+            Return to Upload
+          </Link>
+        </div>
+      )}
+      
+      {loadingState === 'no-data' && (
+        <div className="mb-6 p-4 bg-yellow-100 text-yellow-700 rounded-md dark:bg-yellow-900/30 dark:text-yellow-400">
+          <p className="font-medium">No Converted Design</p>
+          <p>You're viewing the default email template. Upload a design to convert it to HTML.</p>
+          <Link href="/" className="inline-block mt-2 px-4 py-2 bg-yellow-200 dark:bg-yellow-800 rounded-md">
+            Go to Upload
+          </Link>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="border rounded-lg overflow-hidden">
