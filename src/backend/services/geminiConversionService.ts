@@ -214,11 +214,18 @@ Please provide only the complete HTML code without any explanations.
       // Get the file extension
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
       
-      // Convert the design file to an image
+      // Convert the design file to an image/buffer
       const imageBuffer = await this.convertDesignToImage(filePath, fileExtension);
-      
+    
       // Generate HTML using Gemini
-      const html = await this.generateHtmlWithGemini(imageBuffer, fileName, fileExtension, options);
+      const html = await this.generateHtmlWithGemini(
+        imageBuffer,
+        fileName,
+        fileExtension,
+        options
+      );
+      
+      console.log('HTML generated successfully, length:', html.length);
       
       // Return the conversion result
       return {
