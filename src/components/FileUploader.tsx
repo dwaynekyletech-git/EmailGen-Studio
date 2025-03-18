@@ -56,13 +56,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
   const handleFileUpload = async (file: File) => {
     // Check file type
-    const validTypes = ['.psd', '.xd', '.fig'];
+    const validTypes = ['.png', '.jpg', '.jpeg'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!validTypes.includes(fileType)) {
-      setError(`Invalid file type. Supported types: PSD, XD, FIG`);
+      setError(`Invalid file type. Supported types: PNG, JPG`);
       if (onConversionError) {
-        onConversionError(`Invalid file type. Supported types: PSD, XD, FIG`);
+        onConversionError(`Invalid file type. Supported types: PNG, JPG`);
       }
       return;
     }
@@ -213,7 +213,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               Drag & drop your design file
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Supported formats: PSD, XD, FIG
+              Supported formats: PNG, JPG
             </p>
             <p className="mt-2 text-xs text-gray-400">
               or click to select a file
@@ -224,7 +224,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           ref={(el) => { fileInputRef.current = el; }}
           type="file"
           className="hidden"
-          accept=".psd,.xd,.fig"
+          accept=".png,.jpg,.jpeg"
           onChange={handleFileChange}
           disabled={isUploading}
         />

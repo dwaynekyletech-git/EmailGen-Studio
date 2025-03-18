@@ -50,28 +50,29 @@ export class GeminiConversionService {
    * @param fileExtension The file extension
    */
   private getMimeType(fileExtension: string): string {
+    // For Gemini, we need to use image MIME types
+    // For non-image files, we'll use application/octet-stream
     const mimeTypes: Record<string, string> = {
-      '.psd': 'image/vnd.adobe.photoshop',
-      '.xd': 'application/vnd.adobe.xd',
-      '.fig': 'application/octet-stream', // Figma doesn't have a standard MIME type
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg'
+      '.jpeg': 'image/jpeg',
+      '.psd': 'application/octet-stream',
+      '.xd': 'application/octet-stream',
+      '.fig': 'application/octet-stream'
     };
     
     return mimeTypes[fileExtension] || 'application/octet-stream';
   }
   
   /**
-   * Converts a design file to a PNG for Gemini to process
+   * Converts a design file to a format Gemini can process
    * @param filePath Path to the file in Supabase storage
    * @param fileType Type of the design file
    */
   private async convertDesignToImage(filePath: string, fileType: string): Promise<ArrayBuffer> {
-    console.log(`Converting design file to image: ${filePath} (${fileType})`);
+    console.log(`Processing design file: ${filePath} (${fileType})`);
     
-    // For now, we'll just download the file and use it directly
-    // In a real implementation, you would convert PSD/XD/FIG to PNG
+    // Download the file from Supabase
     const { data, error } = await this.supabase
       .storage
       .from('design-files')
@@ -82,9 +83,15 @@ export class GeminiConversionService {
       throw new Error(`Failed to download file: ${error.message}`);
     }
     
-    // For demonstration purposes, we're using the file directly
-    // In a real implementation, you would convert the file to PNG here
-    return await data.arrayBuffer();
+    const arrayBuffer = await data.arrayBuffer();
+    
+    // For non-image files, log a warning
+    if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
+      console.warn(`File type ${fileType} is being sent directly to Gemini. This may work for some files but could fail for others.`);
+      console.warn(`For best results, consider pre-converting ${fileType} files to PNG before uploading.`);
+    }
+    
+    return arrayBuffer;
   }
   
   /**
@@ -101,8 +108,15 @@ export class GeminiConversionService {
   ): Promise<string> {
     console.log('Generating HTML with Gemini');
     
-    // Convert the image buffer to a data URL
+    // Get the appropriate MIME type for the file
     const mimeType = this.getMimeType(fileType);
+    
+    // For non-image files, we should show a warning
+    if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
+      console.warn(`Attempting to process ${fileType} file with Gemini. This may have limited compatibility.`);
+    }
+    
+    // Convert the image buffer to a data URL
     const imageDataUrl = this.arrayBufferToDataURL(imageBuffer, mimeType);
     
     // Create a prompt for Gemini
@@ -127,9 +141,9 @@ Please provide only the complete HTML code without any explanations.
 `;
 
     try {
-      // Use Gemini Flash 2.0 model
+      // Use Gemini Flash model
       const model = this.gemini.getGenerativeModel({
-        model: "gemini-flash-2.0",
+        model: "gemini-1.5-flash",
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -175,7 +189,7 @@ Please provide only the complete HTML code without any explanations.
       return htmlMatch[1] || htmlContent;
     } catch (error) {
       console.error('Error generating HTML with Gemini:', error);
-      throw new Error('Failed to generate HTML with Gemini');
+      throw new Error(`Failed to generate HTML with Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
   

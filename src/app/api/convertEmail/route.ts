@@ -90,16 +90,21 @@ export async function POST(request: NextRequest) {
     console.log('File received:', file.name, 'Size:', file.size);
     
     // Check file type
-    const validTypes = ['.psd', '.xd', '.fig', '.png', '.jpg', '.jpeg'];
+    const validTypes = ['.png', '.jpg', '.jpeg'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     console.log('File type:', fileType);
     
     if (!validTypes.includes(fileType)) {
       return NextResponse.json(
-        { error: 'Invalid file type. Supported types: PSD, XD, FIG, PNG, JPG' },
+        { error: 'Invalid file type. Supported types: PNG, JPG' },
         { status: 400 }
       );
+    }
+    
+    // Add warning for non-image files
+    if (['.psd', '.xd', '.fig'].includes(fileType)) {
+      console.warn(`Warning: ${fileType} files may have limited compatibility with Gemini's vision model. Attempting conversion anyway.`);
     }
     
     // Check Supabase configuration
@@ -222,14 +227,20 @@ export async function POST(request: NextRequest) {
     } catch (fileError) {
       console.error('File processing error:', fileError);
       return NextResponse.json(
-        { error: `File processing failed: ${fileError instanceof Error ? fileError.message : 'Unknown error'}` },
+        { 
+          error: `File processing failed: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`,
+          details: fileError instanceof Error ? fileError.stack : undefined
+        },
         { status: 500 }
       );
     }
   } catch (error) {
     console.error('Conversion error:', error);
     return NextResponse.json(
-      { error: `Failed to process the file: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      { 
+        error: `Failed to process the file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

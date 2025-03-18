@@ -29,14 +29,19 @@ export async function POST(request: NextRequest) {
     }
     
     // Check file type
-    const validTypes = ['.psd', '.xd', '.fig', '.png', '.jpg', '.jpeg'];
+    const validTypes = ['.png', '.jpg', '.jpeg'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!validTypes.includes(fileType)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid file type. Supported types: PSD, XD, FIG, PNG, JPG' }),
+        JSON.stringify({ error: 'Invalid file type. Supported types: PNG, JPG' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
+    }
+    
+    // Add warning for non-image files
+    if (['.psd', '.xd', '.fig'].includes(fileType)) {
+      console.warn(`Warning: ${fileType} files may have limited compatibility with Gemini's vision model. Attempting conversion anyway.`);
     }
     
     // Upload file to Supabase Storage
@@ -76,7 +81,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Streaming conversion error:', error);
     return new Response(
-      JSON.stringify({ error: `Failed to process the file: ${error instanceof Error ? error.message : 'Unknown error'}` }),
+      JSON.stringify({ 
+        error: `Failed to process the file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: error instanceof Error ? error.stack : undefined
+      }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }

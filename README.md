@@ -70,7 +70,12 @@ EmailGen Studio is a powerful tool designed for email developers, marketing team
 
 ## AI-Powered Design to HTML Conversion
 
-EmailGen Studio uses Google's Gemini Flash 2.0 to convert design files (PSD, XD, FIG, PNG, JPG) into responsive HTML emails optimized for Salesforce Marketing Cloud. The conversion process follows these steps:
+EmailGen Studio uses Google's Gemini 1.5 Flash to convert design files into responsive HTML emails optimized for Salesforce Marketing Cloud. 
+
+**Supported File Types**: 
+- PNG and JPG images of your designs
+
+The conversion process follows these steps:
 
 1. **File Upload**: Users upload their design files through an intuitive drag-and-drop interface.
 2. **Visual Analysis**: Gemini's vision capabilities analyze the design file to understand the visual elements, layout, colors, and typography.
