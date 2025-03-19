@@ -25,23 +25,20 @@ export default function UploadPage() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Convert Your Design to HTML Email</h2>
           <p className="text-gray-600 mb-6">
-            Upload your design file (PSD, XD, or FIG) and our AI will convert it into a responsive HTML email
+            Upload your design file and our AI will convert it into a responsive HTML email
             optimized for Salesforce Marketing Cloud.
           </p>
           
           <FileUploader 
             onConversionComplete={handleConversionComplete}
             onConversionError={handleConversionError}
-            makeResponsive={true}
-            optimizeForEmail={true}
-            targetPlatform="sfmc"
           />
         </div>
         
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-blue-800 mb-3">How It Works</h3>
           <ol className="list-decimal list-inside space-y-2 text-blue-700">
-            <li>Upload your design file (Adobe Photoshop, Adobe XD, or Figma)</li>
+            <li>Upload your design file</li>
             <li>Our AI analyzes the design and converts it to responsive HTML</li>
             <li>Review and edit the generated HTML in our live editor</li>
             <li>Validate the email against QA rules and test rendering</li>
