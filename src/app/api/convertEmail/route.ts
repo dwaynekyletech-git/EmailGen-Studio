@@ -13,7 +13,7 @@ const conversionService = createGeminiConversionService();
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const { userId } = getAuth({ request });
+    const { userId } = getAuth(request);
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized. Please sign in to use this feature.' }, 
@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
     // Convert the design to HTML using the service
     const result = await conversionService.convertDesignToHtml(
       filePath, 
-      file.name
+      file.name,
+      arrayBuffer
     );
     
     // Add user ID to metadata

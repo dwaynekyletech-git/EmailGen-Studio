@@ -62,32 +62,54 @@ export class GeminiConversionService {
   
   /**
    * Converts a design file to a format Gemini can process
-   * @param filePath Path to the file in Supabase storage
+   * @param filePath Path to the file in Supabase storage or a temp path
    * @param fileType Type of the design file
+   * @param fileBuffer Optional buffer when using simulated paths
    */
-  private async convertDesignToImage(filePath: string, fileType: string): Promise<ArrayBuffer> {
+  private async convertDesignToImage(
+    filePath: string, 
+    fileType: string,
+    fileBuffer?: ArrayBuffer
+  ): Promise<ArrayBuffer> {
     console.log(`Processing design file: ${filePath} (${fileType})`);
     
-    // Download the file from Supabase
-    const { data, error } = await this.supabase
-      .storage
-      .from('design-files')
-      .download(filePath);
+    // If a buffer is directly provided, use it instead of downloading
+    if (fileBuffer) {
+      console.log('Using provided file buffer instead of downloading');
+      return fileBuffer;
+    }
+    
+    // Check if this is a simulated path (starts with 'temp/')
+    if (filePath.startsWith('temp/')) {
+      console.log('Using simulated path - in a production environment, this would download from Supabase');
+      throw new Error('No file buffer provided for simulated path. In development mode, please provide the file buffer directly.');
+    }
+    
+    // Download the file from Supabase (only for real paths)
+    try {
+      const { data, error } = await this.supabase
+        .storage
+        .from('design-files')
+        .download(filePath);
+        
+      if (error) {
+        console.error('Error downloading file:', error);
+        throw new Error(`Failed to download file: ${error.message}`);
+      }
       
-    if (error) {
-      console.error('Error downloading file:', error);
-      throw new Error(`Failed to download file: ${error.message}`);
+      const arrayBuffer = await data.arrayBuffer();
+      
+      // For non-image files, log a warning
+      if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
+        console.warn(`File type ${fileType} is being sent directly to Gemini. This may work for some files but could fail for others.`);
+        console.warn(`For best results, consider pre-converting ${fileType} files to PNG before uploading.`);
+      }
+      
+      return arrayBuffer;
+    } catch (error) {
+      console.error('Error in file processing:', error);
+      throw new Error(`Failed to process file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    const arrayBuffer = await data.arrayBuffer();
-    
-    // For non-image files, log a warning
-    if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
-      console.warn(`File type ${fileType} is being sent directly to Gemini. This may work for some files but could fail for others.`);
-      console.warn(`For best results, consider pre-converting ${fileType} files to PNG before uploading.`);
-    }
-    
-    return arrayBuffer;
   }
   
   /**
@@ -192,10 +214,12 @@ Please provide only the complete HTML code without any explanations.
    * Converts a design file to HTML
    * @param filePath Path to the file in Supabase storage
    * @param fileName Original file name
+   * @param fileBuffer Optional array buffer of the file (for simulated paths)
    */
   public async convertDesignToHtml(
     filePath: string,
-    fileName: string
+    fileName: string,
+    fileBuffer?: ArrayBuffer
   ): Promise<ConversionResult> {
     try {
       console.log(`Converting design file: ${fileName}`);
@@ -204,7 +228,7 @@ Please provide only the complete HTML code without any explanations.
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
       
       // Convert the design file to an image/buffer
-      const imageBuffer = await this.convertDesignToImage(filePath, fileExtension);
+      const imageBuffer = await this.convertDesignToImage(filePath, fileExtension, fileBuffer);
     
       // Generate HTML using Gemini
       const html = await this.generateHtmlWithGemini(
@@ -235,10 +259,12 @@ Please provide only the complete HTML code without any explanations.
    * Streams the HTML generation process
    * @param filePath Path to the file in Supabase storage
    * @param fileName Original file name
+   * @param fileBuffer Optional array buffer of the file (for simulated paths)
    */
   public async streamConversion(
     filePath: string,
-    fileName: string
+    fileName: string,
+    fileBuffer?: ArrayBuffer
   ): Promise<Response> {
     try {
       console.log(`Converting design file for streaming: ${fileName}`);
@@ -247,7 +273,7 @@ Please provide only the complete HTML code without any explanations.
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
       
       // Convert the design file to an image
-      const imageBuffer = await this.convertDesignToImage(filePath, fileExtension);
+      const imageBuffer = await this.convertDesignToImage(filePath, fileExtension, fileBuffer);
       
       // Generate HTML using Gemini
       const html = await this.generateHtmlWithGemini(imageBuffer, fileName, fileExtension);
