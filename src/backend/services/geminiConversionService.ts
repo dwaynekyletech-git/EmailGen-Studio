@@ -10,13 +10,9 @@ interface ConversionResult {
     conversionTimestamp: string;
     designType: string;
     responsive: boolean;
+    userId?: string;
+    conversionId?: string;
   };
-}
-
-interface ConversionOptions {
-  makeResponsive: boolean;
-  optimizeForEmail: boolean;
-  targetPlatform: 'sfmc' | 'generic';
 }
 
 /**
@@ -98,13 +94,12 @@ export class GeminiConversionService {
    * Generates HTML from the design image using Gemini
    * @param imageBuffer The image buffer
    * @param fileName Original file name
-   * @param options Conversion options
+   * @param fileType File extension
    */
   private async generateHtmlWithGemini(
     imageBuffer: ArrayBuffer,
     fileName: string,
-    fileType: string,
-    options: ConversionOptions
+    fileType: string
   ): Promise<string> {
     console.log('Generating HTML with Gemini');
     
@@ -125,10 +120,10 @@ You are an expert email developer specializing in converting design files to res
 
 I have a design file named "${fileName}" that I need to convert to HTML.
 
-Please convert this design into ${options.optimizeForEmail ? 'an HTML email' : 'HTML'} that is:
-${options.makeResponsive ? '- Fully responsive for all devices' : '- Optimized for desktop viewing'}
-${options.optimizeForEmail ? '- Compatible with email clients' : '- Compatible with web browsers'}
-${options.targetPlatform === 'sfmc' ? '- Specifically optimized for Salesforce Marketing Cloud' : '- Using standard HTML practices'}
+Please convert this design into an HTML email that is:
+- Fully responsive for all devices
+- Compatible with email clients
+- Specifically optimized for Salesforce Marketing Cloud
 
 The HTML should:
 1. Use table-based layout for email client compatibility
@@ -197,16 +192,10 @@ Please provide only the complete HTML code without any explanations.
    * Converts a design file to HTML
    * @param filePath Path to the file in Supabase storage
    * @param fileName Original file name
-   * @param options Conversion options
    */
   public async convertDesignToHtml(
     filePath: string,
-    fileName: string,
-    options: ConversionOptions = {
-      makeResponsive: true,
-      optimizeForEmail: true,
-      targetPlatform: 'sfmc'
-    }
+    fileName: string
   ): Promise<ConversionResult> {
     try {
       console.log(`Converting design file: ${fileName}`);
@@ -221,8 +210,7 @@ Please provide only the complete HTML code without any explanations.
       const html = await this.generateHtmlWithGemini(
         imageBuffer,
         fileName,
-        fileExtension,
-        options
+        fileExtension
       );
       
       console.log('HTML generated successfully, length:', html.length);
@@ -234,7 +222,7 @@ Please provide only the complete HTML code without any explanations.
           originalFileName: fileName,
           conversionTimestamp: new Date().toISOString(),
           designType: fileExtension.replace('.', '').toUpperCase(),
-          responsive: options.makeResponsive
+          responsive: true
         }
       };
     } catch (error) {
@@ -247,16 +235,10 @@ Please provide only the complete HTML code without any explanations.
    * Streams the HTML generation process
    * @param filePath Path to the file in Supabase storage
    * @param fileName Original file name
-   * @param options Conversion options
    */
   public async streamConversion(
     filePath: string,
-    fileName: string,
-    options: ConversionOptions = {
-      makeResponsive: true,
-      optimizeForEmail: true,
-      targetPlatform: 'sfmc'
-    }
+    fileName: string
   ): Promise<Response> {
     try {
       console.log(`Converting design file for streaming: ${fileName}`);
@@ -267,8 +249,8 @@ Please provide only the complete HTML code without any explanations.
       // Convert the design file to an image
       const imageBuffer = await this.convertDesignToImage(filePath, fileExtension);
       
-      // Generate HTML using Gemini (non-streaming for now)
-      const html = await this.generateHtmlWithGemini(imageBuffer, fileName, fileExtension, options);
+      // Generate HTML using Gemini
+      const html = await this.generateHtmlWithGemini(imageBuffer, fileName, fileExtension);
       
       // Create a ReadableStream to simulate streaming
       const { readable, writable } = new TransformStream();
