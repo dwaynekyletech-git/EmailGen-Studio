@@ -14,85 +14,50 @@ import CommandPalette from "@/components/CommandPalette";
 import CodeTooltip from "@/components/CodeTooltip";
 
 // Default HTML to use if no uploaded HTML is available
-const defaultHtml = `<!DOCTYPE html>
+const DEFAULT_HTML = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Email Template</title>
-  <style type="text/css">
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-    }
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    .header {
-      background-color: #f8f9fa;
-      padding: 20px;
-      text-align: center;
-    }
-    .content {
-      padding: 20px;
-    }
-    .footer {
-      background-color: #f8f9fa;
-      padding: 20px;
-      text-align: center;
-      font-size: 12px;
-    }
-  </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>Welcome to Our Newsletter</h1>
-    </div>
-    <div class="content">
-      <p>Hello there,</p>
-      <p>Upload a design image to convert it to HTML.</p>
-      <p>Best regards,<br>The Team</p>
-    </div>
-    <div class="footer">
-      <p>&copy; 2024 EmailGen Studio. All rights reserved.</p>
-      <p><a href="#">Unsubscribe</a> | <a href="#">View in browser</a></p>
-    </div>
-  </div>
+  <p>Your email content goes here.</p>
 </body>
 </html>`;
 
 export default function EditorPage() {
-  const [code, setCode] = useState(defaultHtml);
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
+  const [code, setCode] = useState(DEFAULT_HTML);
   const [isMobileView, setIsMobileView] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [emailId, setEmailId] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<'loading' | 'success' | 'error' | 'no-data'>('loading');
-  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [tooltip, setTooltip] = useState<{
     title: string;
     description: string;
-    code?: string;
+    code: string;
     position: { x: number; y: number };
     type: 'info' | 'warning' | 'error' | 'tip';
   } | null>(null);
   const { user } = useUser();
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const isDarkMode = theme === 'dark';
 
   // Add keyboard event listener within the useEffect
   useEffect(() => {
-    // Function to handle keyboard shortcuts
+    // Function to handle keyboard shortcuts - temporarily disabled
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Command palette shortcut (Cmd+K or Ctrl+K)
+      // Command palette shortcut (Cmd+K or Ctrl+K) - temporarily disabled
+      /*
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsPaletteOpen(prev => !prev);
       }
+      */
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -234,64 +199,49 @@ export default function EditorPage() {
     }
   };
 
-  // Handle command palette execution
-  const handleExecuteCommand = (commandId: string) => {
-    switch (commandId) {
-      case 'format-code':
-        // In a real implementation, this would use a proper HTML formatter
-        // For now, we'll just simulate formatting with a simple indentation
-        try {
-          const formattedCode = code
-            .replace(/></g, '>\n<')
-            .replace(/\n\s+/g, '\n')
-            .replace(/\n/g, '\n  ')
-            .replace(/\n  <\/([a-zA-Z0-9]+)>/g, '\n</$1>');
-          setCode(formattedCode);
-          
-          // Show tooltip to indicate successful formatting
-          setTooltip({
-            title: 'Code Formatted',
-            description: 'Your HTML has been formatted for better readability.',
-            position: { x: 100, y: 100 },
-            type: 'info'
-          });
-          
-          // Auto-hide tooltip after 3 seconds
-          setTimeout(() => setTooltip(null), 3000);
-        } catch (error) {
-          console.error('Formatting error:', error);
-        }
+  // Handle command execution from command palette
+  const handleExecuteCommand = (command: string) => {
+    console.log(`Executing command: ${command}`);
+    
+    switch (command) {
+      case 'format':
+        // Format HTML implementation
         break;
-        
       case 'add-header':
-        // Add a header template to the code
-        const headerTemplate = `<div class="header" style="background-color: #f8f9fa; padding: 20px; text-align: center;">
-  <img src="https://via.placeholder.com/150x50" alt="Logo" style="max-width: 150px;">
-  <h1 style="color: #333333; margin-top: 10px;">Newsletter Title</h1>
-</div>`;
-        
-        // Insert after the body tag if it exists
-        if (code.includes('<body>')) {
-          const newCode = code.replace('<body>', '<body>\n  ' + headerTemplate);
-          setCode(newCode);
-        } else {
-          // Just prepend if there's no body tag
-          setCode(headerTemplate + '\n' + code);
-        }
+        // Add header implementation
         break;
-        
-      case 'docs-email-best-practices':
-        // Show a tooltip with email best practices
-        setTooltip({
-          title: 'Email HTML Best Practices',
-          description: 'Use tables for layout, inline CSS for styling, and avoid using DIVs as main layout elements. Always include text alternatives for images.',
-          position: { x: 100, y: 100 },
-          type: 'tip'
-        });
+      case 'best-practices':
+        // Show email best practices implementation
         break;
-        
-      // Add more command handlers as needed
+      default:
+        console.log(`Unknown command: ${command}`);
     }
+    
+    setIsCommandPaletteOpen(false);
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Command Palette (Cmd+K or Ctrl+K)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
+      }
+      
+      // Save (Cmd+S or Ctrl+S)
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveDraft();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const toggleDarkMode = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
   return (
@@ -315,7 +265,7 @@ export default function EditorPage() {
         <>
           <div className="mb-4 flex justify-between items-center">
             <button
-              onClick={() => setIsPaletteOpen(true)}
+              onClick={() => setIsCommandPaletteOpen(true)}
               className="flex items-center space-x-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -455,8 +405,8 @@ export default function EditorPage() {
           
           {/* Command Palette (Modal) */}
           <CommandPalette
-            isOpen={isPaletteOpen}
-            onClose={() => setIsPaletteOpen(false)}
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
             onExecuteCommand={handleExecuteCommand}
           />
           

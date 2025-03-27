@@ -32,6 +32,9 @@ export default function UploadPage() {
           <FileUploader 
             onConversionComplete={handleConversionComplete}
             onConversionError={handleConversionError}
+            makeResponsive={true}
+            optimizeForEmail={true}
+            targetPlatform="sfmc"
           />
         </div>
         
