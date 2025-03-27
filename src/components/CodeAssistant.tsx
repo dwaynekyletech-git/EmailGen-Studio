@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface CodeAssistantProps {
   code: string;
@@ -26,6 +27,124 @@ interface CodeSuggestion {
   type: 'improvement' | 'error' | 'warning' | 'info';
 }
 
+interface MessagePart {
+  type: 'text' | 'code';
+  content: string;
+  language?: string;
+}
+
+// Helper function to detect and format code blocks
+const formatMessageContent = (content: string): MessagePart[] => {
+  const parts: MessagePart[] = [];
+  let lastIndex = 0;
+  
+  // Updated regex to capture the language identifier
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+  let match;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // Add text before code block if any
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: content.slice(lastIndex, match.index)
+      });
+    }
+
+    // Add code block with language if specified
+    parts.push({
+      type: 'code',
+      content: match[2].trim(),
+      language: match[1] || undefined
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text if any
+  if (lastIndex < content.length) {
+    parts.push({
+      type: 'text',
+      content: content.slice(lastIndex)
+    });
+  }
+
+  return parts;
+};
+
+interface CodeBlockProps {
+  code: string;
+  language?: string;
+  onChange?: (newCode: string) => void;
+}
+
+const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange }) => {
+  const [copied, setCopied] = useState(false);
+  const [applied, setApplied] = useState(false);
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
+  };
+
+  const applyCode = () => {
+    if (onChange) {
+      onChange(code);
+      setApplied(true);
+      setTimeout(() => setApplied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative group rounded-md bg-zinc-50 dark:bg-zinc-900 p-4 my-2">
+      <pre className="overflow-x-auto">
+        <code className={language ? `language-${language}` : ''}>
+          {code}
+        </code>
+      </pre>
+      <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={copyToClipboard}
+          className="p-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          title="Copy code"
+        >
+          {copied ? (
+            <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+        </button>
+        {onChange && (
+          <button
+            onClick={applyCode}
+            className="p-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            title="Apply code to editor"
+          >
+            {applied ? (
+              <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const CodeAssistant: React.FC<CodeAssistantProps> = ({ 
   code, 
   onChange,
@@ -43,8 +162,10 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [suggestions, setSuggestions] = useState<CodeSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [analyzingCode, setAnalyzingCode] = useState(false);
   const [activeTool, setActiveTool] = useState<'chat' | 'suggestions'>('chat');
   const messagesEndRef = { current: null as HTMLDivElement | null };
+  const codeRef = { current: code };
 
   // Scroll to bottom of chat when messages change
   useEffect(() => {
@@ -53,46 +174,48 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     }
   }, [messages]);
 
-  // Mock function to analyze code and generate suggestions
-  // In a real implementation, this would call the AI service
+  // Update codeRef when code changes
   useEffect(() => {
-    if (code) {
-      // Generate demo suggestions based on the code
-      const demoSuggestions: CodeSuggestion[] = [];
+    codeRef.current = code;
+  }, [code]);
+
+  // Analyze code when it changes or component mounts
+  useEffect(() => {
+    const analyzeCode = async () => {
+      if (!code || analyzingCode) return;
       
-      // Check for common HTML email issues
-      if (!code.includes('doctype') && !code.includes('DOCTYPE')) {
-        demoSuggestions.push({
-          id: '1',
-          title: 'Missing DOCTYPE declaration',
-          description: 'Add a DOCTYPE declaration to ensure proper rendering across email clients.',
-          code: '<!DOCTYPE html>',
-          lineNumber: 1,
-          type: 'error'
+      setAnalyzingCode(true);
+      
+      try {
+        const response = await fetch('/api/code-assistant/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code }),
         });
+        
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.suggestions && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions);
+        }
+      } catch (error) {
+        console.error('Failed to analyze code:', error);
+      } finally {
+        setAnalyzingCode(false);
       }
-      
-      if (!code.includes('meta') || !code.includes('viewport')) {
-        demoSuggestions.push({
-          id: '2',
-          title: 'Missing viewport meta tag',
-          description: 'Add a viewport meta tag for better responsive behavior.',
-          code: '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-          type: 'warning'
-        });
-      }
-      
-      if (code.includes('float')) {
-        demoSuggestions.push({
-          id: '3',
-          title: 'Avoid using float in email templates',
-          description: 'Float properties are not consistently supported across email clients. Consider using tables for layout instead.',
-          type: 'warning'
-        });
-      }
-      
-      setSuggestions(demoSuggestions);
-    }
+    };
+    
+    const debounceTimer = setTimeout(() => {
+      analyzeCode();
+    }, 1500); // Debounce code analysis to avoid excessive API calls
+    
+    return () => clearTimeout(debounceTimer);
   }, [code]);
 
   // Handle sending a new message
@@ -101,7 +224,7 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     
     // Add user message to chat
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: uuidv4(),
       role: 'user',
       content: newMessage,
       timestamp: new Date()
@@ -112,48 +235,61 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     setLoading(true);
     
     try {
-      // In a real implementation, this would call the AI service via API
-      // For now, we'll simulate a response
-      setTimeout(() => {
-        const demoResponses: Record<string, string> = {
-          'default': "I've analyzed your code. Would you like me to help you with HTML email best practices, responsive design, or something else?",
-          'help': "I can help you with HTML email development, including responsive design, inline CSS, and client compatibility. What would you like assistance with?",
-          'fix': "I've identified some improvements for your email template. Would you like me to implement them for you?",
-          'responsive': "To make your email responsive, we should add a viewport meta tag and use media queries. Would you like me to add these to your code?"
-        };
-        
-        // Determine which response to use based on the message content
-        let responseText = demoResponses.default;
-        const lowerCaseMessage = newMessage.toLowerCase();
-        
-        if (lowerCaseMessage.includes('help')) {
-          responseText = demoResponses.help;
-        } else if (lowerCaseMessage.includes('fix') || lowerCaseMessage.includes('improve')) {
-          responseText = demoResponses.fix;
-        } else if (lowerCaseMessage.includes('responsive')) {
-          responseText = demoResponses.responsive;
-        }
-        
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: responseText,
-          timestamp: new Date()
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
-        setLoading(false);
-      }, 1500);
+      // Call the chat API endpoint
+      const apiMessages = messages
+        .filter(m => m.role !== 'system' && m.role !== 'error')
+        .map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content
+        }));
+      
+      // Add the new user message
+      apiMessages.push({
+        id: userMessage.id,
+        role: userMessage.role,
+        content: userMessage.content
+      });
+      
+      const response = await fetch('/api/code-assistant/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: apiMessages,
+          code: codeRef.current, // Use the current code value from ref
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Add assistant message to chat
+      const assistantMessage: Message = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: data.text,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      // Handle errors
+      console.error('Error sending message:', error);
+      
+      // Add error message to chat
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: uuidv4(),
         role: 'error',
         content: 'Sorry, I encountered an error processing your request. Please try again.',
         timestamp: new Date()
       };
       
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setLoading(false);
     }
   };
@@ -161,9 +297,92 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
   // Apply a suggestion to the code
   const applySuggestion = (suggestion: CodeSuggestion) => {
     if (suggestion.code && onChange) {
-      // In a real implementation, this would intelligently modify the code
-      // For now, we'll just append the suggestion to the top of the code for demo purposes
-      const newCode = suggestion.code + '\n' + code;
+      // Get the current code lines
+      const currentLines = codeRef.current.split('\n');
+      
+      if (suggestion.lineNumber && suggestion.lineNumber > 0) {
+        // If we have a specific line number, we'll try to intelligently modify that section
+        const lineIndex = suggestion.lineNumber - 1;
+        
+        // Check if this is a tag replacement or addition
+        if (suggestion.type === 'error' || suggestion.type === 'warning') {
+          // For errors/warnings, we might be replacing problematic code
+          // Look for matching opening/closing tags or similar patterns
+          const targetLine = currentLines[lineIndex];
+          const tagMatch = targetLine.match(/<(\w+)[^>]*>/);
+          
+          if (tagMatch) {
+            // If we found a tag, look for its closing tag
+            const openTag = tagMatch[1];
+            const closeTagRegex = new RegExp(`</\s*${openTag}\s*>`);
+            let endLineIndex = lineIndex;
+            
+            // Look for the closing tag in subsequent lines
+            for (let i = lineIndex + 1; i < currentLines.length; i++) {
+              if (closeTagRegex.test(currentLines[i])) {
+                endLineIndex = i;
+                break;
+              }
+            }
+            
+            // Replace the entire section with the new code
+            currentLines.splice(lineIndex, endLineIndex - lineIndex + 1, ...suggestion.code.split('\n'));
+          } else {
+            // If no tag found, just replace the single line
+            currentLines[lineIndex] = suggestion.code;
+          }
+        } else {
+          // For improvements or info, insert the code at the specified line
+          currentLines.splice(lineIndex, 0, ...suggestion.code.split('\n'));
+        }
+      } else {
+        // If no line number specified, try to find the appropriate section to modify
+        const suggestionLines = suggestion.code.split('\n');
+        const firstSuggestionLine = suggestionLines[0].trim();
+        
+        // Try to find a matching section in the code
+        let insertIndex = -1;
+        
+        if (firstSuggestionLine.startsWith('<!DOCTYPE')) {
+          // DOCTYPE should always be at the start
+          insertIndex = 0;
+        } else if (firstSuggestionLine.startsWith('<meta')) {
+          // Meta tags go in the head
+          const headStartIndex = currentLines.findIndex(line => line.includes('<head'));
+          if (headStartIndex !== -1) {
+            insertIndex = headStartIndex + 1;
+          }
+        } else if (firstSuggestionLine.startsWith('<style')) {
+          // Style tags typically go at the end of head
+          const headEndIndex = currentLines.findIndex(line => line.includes('</head'));
+          if (headEndIndex !== -1) {
+            insertIndex = headEndIndex;
+          }
+        } else if (firstSuggestionLine.startsWith('<body') || firstSuggestionLine.includes('</body>')) {
+          // Body tag modifications
+          const bodyIndex = currentLines.findIndex(line => line.includes('<body'));
+          if (bodyIndex !== -1) {
+            insertIndex = bodyIndex;
+          }
+        }
+        
+        if (insertIndex !== -1) {
+          // Insert or replace at the found position
+          currentLines.splice(insertIndex, 0, ...suggestionLines);
+        } else {
+          // If we couldn't find a good spot, append to the end of the body
+          const bodyEndIndex = currentLines.findIndex(line => line.includes('</body>'));
+          if (bodyEndIndex !== -1) {
+            currentLines.splice(bodyEndIndex, 0, ...suggestionLines);
+          } else {
+            // If no body tag found, just append to the end
+            currentLines.push(...suggestionLines);
+          }
+        }
+      }
+      
+      // Join the lines back together and update the code
+      const newCode = currentLines.join('\n');
       onChange(newCode);
       
       // Remove the suggestion from the list
@@ -171,7 +390,7 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
       
       // Add a message to the chat about the applied suggestion
       const assistantMessage: Message = {
-        id: Date.now().toString(),
+        id: uuidv4(),
         role: 'assistant',
         content: `I've applied the suggestion: ${suggestion.title}`,
         timestamp: new Date()
@@ -183,26 +402,35 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
 
   // Render message based on its role
   const renderMessage = (message: Message) => {
-    const isUser = message.role === 'user';
-    const isError = message.role === 'error';
+    const parts = formatMessageContent(message.content);
     
     return (
-      <div 
-        key={message.id} 
-        className={`mb-4 ${isUser ? 'text-right' : 'text-left'}`}
+      <div
+        key={message.id}
+        className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} mb-4`}
       >
-        <div 
-          className={`inline-block rounded-lg px-4 py-2 max-w-[80%] ${
-            isUser 
-              ? 'bg-blue-600 text-white' 
-              : isError 
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
+        <div
+          className={`max-w-[80%] rounded-lg p-4 ${
+            message.role === 'user'
+              ? 'bg-blue-500 text-white'
+              : 'bg-zinc-100 dark:bg-zinc-800'
           }`}
         >
-          {message.content}
+          {parts.map((part, index) => {
+            if (part.type === 'code') {
+              return (
+                <CodeBlock
+                  key={index}
+                  code={part.content}
+                  language={part.language}
+                  onChange={onChange}
+                />
+              );
+            }
+            return <span key={index}>{part.content}</span>;
+          })}
         </div>
-        <div className="text-xs text-zinc-500 mt-1">
+        <div className="text-xs text-zinc-500 mt-1 px-1">
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
@@ -339,11 +567,23 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions at the moment</p>
-                <p className="text-xs text-zinc-500">Your code looks good! The assistant will provide suggestions when it detects potential improvements.</p>
+                {analyzingCode ? (
+                  <>
+                    <svg className="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="text-zinc-600 dark:text-zinc-400">Analyzing your code...</p>
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions at the moment</p>
+                    <p className="text-xs text-zinc-500">Your code looks good! The assistant will provide suggestions when it detects potential improvements.</p>
+                  </>
+                )}
               </div>
             )}
           </div>

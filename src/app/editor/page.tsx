@@ -286,122 +286,107 @@ export default function EditorPage() {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="border rounded-lg overflow-hidden">
-          <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b">
-            <h2 className="font-medium">HTML Editor</h2>
-          </div>
-          <CodeMirror
-            value={code}
-            height="500px"
-            extensions={[html()]}
-            onChange={handleCodeChange}
-                    theme={isDarkMode ? oneDark : undefined}
-            className="text-sm"
-          />
-        </div>
-        
-        <div className="border rounded-lg overflow-hidden">
-          <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
-            <h2 className="font-medium">Preview</h2>
-            <div className="flex items-center space-x-2">
-              <button
-                        onClick={() => setIsMobileView(false)}
-                        className={`px-2 py-1 text-xs rounded ${
-                          !isMobileView 
-                            ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
-                            : "bg-zinc-200 dark:bg-zinc-700"
-                        }`}
-              >
-                Desktop
-              </button>
-              <button
-                        onClick={() => setIsMobileView(true)}
-                        className={`px-2 py-1 text-xs rounded ${
-                          isMobileView 
-                            ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
-                            : "bg-zinc-200 dark:bg-zinc-700"
-                        }`}
-              >
-                Mobile
-              </button>
-            </div>
-          </div>
+          {/* Main content area */}
+          <div className="space-y-6">
+            {/* Editor and Preview Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b">
+                  <h2 className="font-medium">HTML Editor</h2>
+                </div>
+                <CodeMirror
+                  value={code}
+                  height="500px"
+                  extensions={[html()]}
+                  onChange={handleCodeChange}
+                  theme={isDarkMode ? oneDark : undefined}
+                  className="text-sm"
+                />
+              </div>
+              
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
+                  <h2 className="font-medium">Preview</h2>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setIsMobileView(false)}
+                      className={`px-2 py-1 text-xs rounded ${
+                        !isMobileView 
+                          ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
+                          : "bg-zinc-200 dark:bg-zinc-700"
+                      }`}
+                    >
+                      Desktop
+                    </button>
+                    <button
+                      onClick={() => setIsMobileView(true)}
+                      className={`px-2 py-1 text-xs rounded ${
+                        isMobileView 
+                          ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
+                          : "bg-zinc-200 dark:bg-zinc-700"
+                      }`}
+                    >
+                      Mobile
+                    </button>
+                  </div>
+                </div>
+                <div 
+                  className="bg-white flex justify-center transition-all duration-300 ease-in-out"
+                  style={{ 
+                    height: isMobileView ? "600px" : "500px",
+                    overflow: "auto"
+                  }}
+                >
                   <div 
-                    className="bg-white flex justify-center transition-all duration-300 ease-in-out"
-                    style={{ 
-                      height: isMobileView ? "600px" : "500px",
-                      overflow: "auto"
+                    className="transition-all duration-300 ease-in-out"
+                    style={{
+                      width: isMobileView ? "375px" : "800px",
+                      height: "100%",
+                      border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
+                      borderRadius: isMobileView ? "20px" : "4px",
+                      overflow: "hidden",
+                      boxShadow: isMobileView 
+                        ? "0 4px 12px rgba(0,0,0,0.15)" 
+                        : "0 1px 3px rgba(0,0,0,0.05)"
                     }}
                   >
-                    <div 
-                      className="transition-all duration-300 ease-in-out"
+                    <iframe
+                      srcDoc={code}
+                      title="Email Preview"
+                      className="w-full h-full border-0"
+                      sandbox="allow-same-origin"
                       style={{
-                        width: isMobileView ? "375px" : "800px",
-                        height: "100%",
-                        border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
-                        borderRadius: isMobileView ? "20px" : "4px",
-                        overflow: "hidden",
-                        boxShadow: isMobileView 
-                          ? "0 4px 12px rgba(0,0,0,0.15)" 
-                          : "0 1px 3px rgba(0,0,0,0.05)"
+                        width: "100%",
+                        height: "100%"
                       }}
-                    >
-            <iframe
-              srcDoc={code}
-              title="Email Preview"
-              className="w-full h-full border-0"
-              sandbox="allow-same-origin"
-                        style={{
-                          width: "100%",
-                          height: "100%"
-                        }}
-            />
-          </div>
-        </div>
-      </div>
-              </div>
-              
-              {saveError && (
-                <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
-                  {saveError}
+                    />
+                  </div>
                 </div>
-              )}
-              
-              {saveSuccess && (
-                <div className="mt-4 p-3 bg-green-100 text-green-700 rounded-md dark:bg-green-900/30 dark:text-green-400">
-                  Draft saved successfully!
-                </div>
-              )}
-      
-      <div className="mt-6 flex justify-end space-x-4">
-                <Link
-                  href="/dashboard"
-                  className="px-4 py-2 border rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                >
-                  Back
-                </Link>
-                <Link
-                  href="/qa"
-                  className="px-4 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                  onClick={() => localStorage.setItem('qaHtml', code)}
-                >
-          Proceed to QA
-                </Link>
               </div>
             </div>
+
+            {/* Error and Success Messages */}
+            {saveError && (
+              <div className="p-3 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
+                {saveError}
+              </div>
+            )}
             
+            {saveSuccess && (
+              <div className="p-3 bg-green-100 text-green-700 rounded-md dark:bg-green-900/30 dark:text-green-400">
+                Draft saved successfully!
+              </div>
+            )}
+
             {/* Code Assistant Panel */}
-            <div className="xl:col-span-1">
+            <div className="border rounded-lg overflow-hidden">
               <CodeAssistant 
                 code={code} 
                 onChange={handleCodeChange}
                 isDarkMode={isDarkMode}
               />
             </div>
-      </div>
+          </div>
           
           {/* Command Palette (Modal) */}
           <CommandPalette
@@ -422,6 +407,23 @@ export default function EditorPage() {
               darkMode={isDarkMode}
             />
           )}
+
+          {/* Navigation Buttons */}
+          <div className="mt-8 flex justify-end space-x-4">
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 border rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              Back
+            </Link>
+            <Link
+              href="/qa"
+              className="px-4 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              onClick={() => localStorage.setItem('qaHtml', code)}
+            >
+              Proceed to QA
+            </Link>
+          </div>
         </>
       )}
     </div>
