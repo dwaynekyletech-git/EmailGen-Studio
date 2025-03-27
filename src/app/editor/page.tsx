@@ -36,6 +36,8 @@ export default function EditorPage() {
   const [emailId, setEmailId] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<'loading' | 'success' | 'error' | 'no-data'>('loading');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isEditorFullscreen, setIsEditorFullscreen] = useState(false);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [tooltip, setTooltip] = useState<{
     title: string;
     description: string;
@@ -244,6 +246,22 @@ export default function EditorPage() {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
+  const toggleEditorFullscreen = () => {
+    setIsEditorFullscreen(!isEditorFullscreen);
+    // Exit preview fullscreen if it's active
+    if (isPreviewFullscreen) {
+      setIsPreviewFullscreen(false);
+    }
+  };
+
+  const togglePreviewFullscreen = () => {
+    setIsPreviewFullscreen(!isPreviewFullscreen);
+    // Exit editor fullscreen if it's active
+    if (isEditorFullscreen) {
+      setIsEditorFullscreen(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">HTML Email Editor</h1>
@@ -289,109 +307,145 @@ export default function EditorPage() {
           {/* Main content area */}
           <div className="space-y-6">
             {/* Editor and Preview Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b">
-                  <h2 className="font-medium">HTML Editor</h2>
-                </div>
-                <CodeMirror
-                  value={code}
-                  height="500px"
-                  extensions={[html()]}
-                  onChange={handleCodeChange}
-                  theme={isDarkMode ? oneDark : undefined}
-                  className="text-sm"
-                />
-              </div>
-              
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
-                  <h2 className="font-medium">Preview</h2>
-                  <div className="flex items-center space-x-2">
+            <div className={`grid ${!isEditorFullscreen && !isPreviewFullscreen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'} gap-6`}>
+              {/* Show editor if not in preview fullscreen mode */}
+              {!isPreviewFullscreen && (
+                <div className={`border rounded-lg overflow-hidden ${isEditorFullscreen ? 'col-span-full' : ''}`}>
+                  <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
+                    <h2 className="font-medium">HTML Editor</h2>
                     <button
-                      onClick={() => setIsMobileView(false)}
-                      className={`px-2 py-1 text-xs rounded ${
-                        !isMobileView 
-                          ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
-                          : "bg-zinc-200 dark:bg-zinc-700"
-                      }`}
+                      onClick={toggleEditorFullscreen}
+                      className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                      title={isEditorFullscreen ? "Exit fullscreen" : "Fullscreen editor"}
                     >
-                      Desktop
-                    </button>
-                    <button
-                      onClick={() => setIsMobileView(true)}
-                      className={`px-2 py-1 text-xs rounded ${
-                        isMobileView 
-                          ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
-                          : "bg-zinc-200 dark:bg-zinc-700"
-                      }`}
-                    >
-                      Mobile
+                      {isEditorFullscreen ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0l5 0m-5 0v5m16-5l-5 5m5-5l0 5m0-5h-5M4 16l5 5m-5-5l5 0m-5 0v5m16-5l-5 5m5-5l0 5m0-5h-5" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                        </svg>
+                      )}
                     </button>
                   </div>
+                  <CodeMirror
+                    value={code}
+                    height={isEditorFullscreen ? "calc(100vh - 200px)" : "500px"}
+                    extensions={[html()]}
+                    onChange={handleCodeChange}
+                    theme={isDarkMode ? oneDark : undefined}
+                    className="text-sm"
+                  />
                 </div>
-                <div 
-                  className="bg-white flex justify-center transition-all duration-300 ease-in-out"
-                  style={{ 
-                    height: isMobileView ? "600px" : "500px",
-                    overflow: "auto"
-                  }}
-                >
+              )}
+              
+              {/* Show preview if not in editor fullscreen mode */}
+              {!isEditorFullscreen && (
+                <div className={`border rounded-lg overflow-hidden ${isPreviewFullscreen ? 'col-span-full' : ''}`}>
+                  <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
+                    <h2 className="font-medium">Preview</h2>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setIsMobileView(false)}
+                        className={`px-2 py-1 text-xs rounded ${
+                          !isMobileView 
+                            ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
+                            : "bg-zinc-200 dark:bg-zinc-700"
+                        }`}
+                      >
+                        Desktop
+                      </button>
+                      <button
+                        onClick={() => setIsMobileView(true)}
+                        className={`px-2 py-1 text-xs rounded ${
+                          isMobileView 
+                            ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
+                            : "bg-zinc-200 dark:bg-zinc-700"
+                        }`}
+                      >
+                        Mobile
+                      </button>
+                      <button
+                        onClick={togglePreviewFullscreen}
+                        className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 ml-2"
+                        title={isPreviewFullscreen ? "Exit fullscreen" : "Fullscreen preview"}
+                      >
+                        {isPreviewFullscreen ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0l5 0m-5 0v5m16-5l-5 5m5-5l0 5m0-5h-5M4 16l5 5m-5-5l5 0m-5 0v5m16-5l-5 5m5-5l0 5m0-5h-5" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                   <div 
-                    className="transition-all duration-300 ease-in-out"
-                    style={{
-                      width: isMobileView ? "375px" : "800px",
-                      height: "100%",
-                      border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
-                      borderRadius: isMobileView ? "20px" : "4px",
-                      overflow: "hidden",
-                      boxShadow: isMobileView 
-                        ? "0 4px 12px rgba(0,0,0,0.15)" 
-                        : "0 1px 3px rgba(0,0,0,0.05)"
+                    className="bg-white flex justify-center transition-all duration-300 ease-in-out"
+                    style={{ 
+                      height: isPreviewFullscreen ? "calc(100vh - 200px)" : "500px",
+                      overflow: "auto"
                     }}
                   >
-                    <iframe
-                      srcDoc={isMobileView ? 
-                        code.replace(
-                          '</head>',
-                          `<style>
-                            /* Force mobile view regardless of media queries */
-                            .mobile-only-table {
-                              display: table !important;
-                              max-height: none !important;
-                              overflow: visible !important;
-                            }
-                            .desktop-content {
-                              display: none !important;
-                            }
-                          </style></head>`
-                        ) : 
-                        code.replace(
-                          '</head>',
-                          `<style>
-                            /* Force desktop view regardless of media queries */
-                            .mobile-only-table {
-                              display: none !important;
-                              max-height: 0 !important;
-                              overflow: hidden !important;
-                            }
-                            .desktop-content {
-                              display: table !important;
-                            }
-                          </style></head>`
-                        )
-                      }
-                      title="Email Preview"
-                      className="w-full h-full border-0"
-                      sandbox="allow-same-origin"
+                    <div 
+                      className="transition-all duration-300 ease-in-out"
                       style={{
-                        width: "100%",
-                        height: "100%"
+                        width: isMobileView ? "375px" : "800px",
+                        height: "100%",
+                        border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
+                        borderRadius: isMobileView ? "20px" : "4px",
+                        overflow: "hidden",
+                        boxShadow: isMobileView 
+                          ? "0 4px 12px rgba(0,0,0,0.15)" 
+                          : "0 1px 3px rgba(0,0,0,0.05)"
                       }}
-                    />
+                    >
+                      <iframe
+                        srcDoc={isMobileView ? 
+                          code.replace(
+                            '</head>',
+                            `<style>
+                              /* Force mobile view regardless of media queries */
+                              .mobile-only-table {
+                                display: table !important;
+                                max-height: none !important;
+                                overflow: visible !important;
+                              }
+                              .desktop-content {
+                                display: none !important;
+                              }
+                            </style></head>`
+                          ) : 
+                          code.replace(
+                            '</head>',
+                            `<style>
+                              /* Force desktop view regardless of media queries */
+                              .mobile-only-table {
+                                display: none !important;
+                                max-height: 0 !important;
+                                overflow: hidden !important;
+                              }
+                              .desktop-content {
+                                display: table !important;
+                              }
+                            </style></head>`
+                          )
+                        }
+                        title="Email Preview"
+                        className="w-full h-full border-0"
+                        sandbox="allow-same-origin"
+                        style={{
+                          width: "100%",
+                          height: "100%"
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Error and Success Messages */}
@@ -407,14 +461,16 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* Code Assistant Panel */}
-            <div className="border rounded-lg overflow-hidden">
-              <CodeAssistant 
-                code={code} 
-                onChange={handleCodeChange}
-                isDarkMode={isDarkMode}
-              />
-            </div>
+            {/* Show Code Assistant only when neither editor nor preview is in fullscreen mode */}
+            {!isEditorFullscreen && !isPreviewFullscreen && (
+              <div className="border rounded-lg overflow-hidden">
+                <CodeAssistant 
+                  code={code} 
+                  onChange={handleCodeChange}
+                  isDarkMode={isDarkMode}
+                />
+              </div>
+            )}
           </div>
           
           {/* Command Palette (Modal) */}

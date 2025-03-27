@@ -179,44 +179,45 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     codeRef.current = code;
   }, [code]);
 
-  // Analyze code when it changes or component mounts
-  useEffect(() => {
-    const analyzeCode = async () => {
-      if (!code || analyzingCode) return;
+  // Analyze code function - now only called when user clicks on Suggestions
+  const analyzeCode = async () => {
+    if (!code || analyzingCode) return;
+    
+    setAnalyzingCode(true);
+    
+    try {
+      const response = await fetch('/api/code-assistant/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
       
-      setAnalyzingCode(true);
-      
-      try {
-        const response = await fetch('/api/code-assistant/analyze', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ code }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.suggestions && Array.isArray(data.suggestions)) {
-          setSuggestions(data.suggestions);
-        }
-      } catch (error) {
-        console.error('Failed to analyze code:', error);
-      } finally {
-        setAnalyzingCode(false);
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
       }
-    };
-    
-    const debounceTimer = setTimeout(() => {
+      
+      const data = await response.json();
+      
+      if (data.suggestions && Array.isArray(data.suggestions)) {
+        setSuggestions(data.suggestions);
+      }
+    } catch (error) {
+      console.error('Failed to analyze code:', error);
+    } finally {
+      setAnalyzingCode(false);
+    }
+  };
+
+  // Handle clicking on the Suggestions button
+  const handleSuggestionsClick = () => {
+    setActiveTool('suggestions');
+    // Only analyze code if we haven't already and aren't currently analyzing
+    if (suggestions.length === 0 && !analyzingCode) {
       analyzeCode();
-    }, 1500); // Debounce code analysis to avoid excessive API calls
-    
-    return () => clearTimeout(debounceTimer);
-  }, [code]);
+    }
+  };
 
   // Handle sending a new message
   const handleSendMessage = async () => {
@@ -453,7 +454,7 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
             Chat
           </button>
           <button
-            onClick={() => setActiveTool('suggestions')}
+            onClick={handleSuggestionsClick}
             className={`px-2 py-1 text-xs rounded ${
               activeTool === 'suggestions' 
                 ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
@@ -503,6 +504,30 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
           <div className="flex-grow overflow-y-auto p-4">
             {suggestions.length > 0 ? (
               <div className="space-y-4">
+                <div className="flex justify-end mb-2">
+                  <button 
+                    onClick={analyzeCode}
+                    disabled={analyzingCode}
+                    className="flex items-center px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600"
+                  >
+                    {analyzingCode ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh Suggestions
+                      </>
+                    )}
+                  </button>
+                </div>
                 {suggestions.map(suggestion => (
                   <div 
                     key={suggestion.id} 
@@ -577,11 +602,18 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
                   </>
                 ) : (
                   <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions at the moment</p>
-                <p className="text-xs text-zinc-500">Your code looks good! The assistant will provide suggestions when it detects potential improvements.</p>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions available</p>
+                    <p className="text-xs text-zinc-500 mb-4">Click the button below to analyze your code for potential improvements.</p>
+                    <button 
+                      onClick={analyzeCode}
+                      disabled={analyzingCode}
+                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {analyzingCode ? 'Analyzing...' : 'Analyze Code'}
+                    </button>
                   </>
                 )}
               </div>
