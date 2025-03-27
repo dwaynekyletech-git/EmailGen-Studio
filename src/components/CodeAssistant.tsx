@@ -269,14 +269,14 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
       const data = await response.json();
       
       // Add assistant message to chat
-      const assistantMessage: Message = {
+        const assistantMessage: Message = {
         id: uuidv4(),
-        role: 'assistant',
+          role: 'assistant',
         content: data.text,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, assistantMessage]);
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -405,11 +405,11 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     const parts = formatMessageContent(message.content);
     
     return (
-      <div
-        key={message.id}
+      <div 
+        key={message.id} 
         className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} mb-4`}
       >
-        <div
+        <div 
           className={`max-w-[80%] rounded-lg p-4 ${
             message.role === 'user'
               ? 'bg-blue-500 text-white'
@@ -577,11 +577,11 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
                   </>
                 ) : (
                   <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions at the moment</p>
-                    <p className="text-xs text-zinc-500">Your code looks good! The assistant will provide suggestions when it detects potential improvements.</p>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions at the moment</p>
+                <p className="text-xs text-zinc-500">Your code looks good! The assistant will provide suggestions when it detects potential improvements.</p>
                   </>
                 )}
               </div>

@@ -351,7 +351,36 @@ export default function EditorPage() {
                     }}
                   >
                     <iframe
-                      srcDoc={code}
+                      srcDoc={isMobileView ? 
+                        code.replace(
+                          '</head>',
+                          `<style>
+                            /* Force mobile view regardless of media queries */
+                            .mobile-only-table {
+                              display: table !important;
+                              max-height: none !important;
+                              overflow: visible !important;
+                            }
+                            .desktop-content {
+                              display: none !important;
+                            }
+                          </style></head>`
+                        ) : 
+                        code.replace(
+                          '</head>',
+                          `<style>
+                            /* Force desktop view regardless of media queries */
+                            .mobile-only-table {
+                              display: none !important;
+                              max-height: 0 !important;
+                              overflow: hidden !important;
+                            }
+                            .desktop-content {
+                              display: table !important;
+                            }
+                          </style></head>`
+                        )
+                      }
                       title="Email Preview"
                       className="w-full h-full border-0"
                       sandbox="allow-same-origin"
