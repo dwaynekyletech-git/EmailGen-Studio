@@ -38,6 +38,7 @@ export default function EditorPage() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const [isCodeAssistantVisible, setIsCodeAssistantVisible] = useState(false);
   const [tooltip, setTooltip] = useState<{
     title: string;
     description: string;
@@ -461,8 +462,27 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* Show Code Assistant only when neither editor nor preview is in fullscreen mode */}
-            {!isEditorFullscreen && !isPreviewFullscreen && (
+            {/* Show Code Assistant toggle button */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => setIsCodeAssistantVisible(!isCodeAssistantVisible)}
+                className="px-4 py-2 border rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center"
+              >
+                <span className="mr-2">{isCodeAssistantVisible ? "Hide Code Assistant" : "Show Code Assistant"}</span>
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  className={`h-5 w-5 transition-transform ${isCodeAssistantVisible ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Show Code Assistant only when neither editor nor preview is in fullscreen mode and it's visible */}
+            {!isEditorFullscreen && !isPreviewFullscreen && isCodeAssistantVisible && (
               <div className="border rounded-lg overflow-hidden">
                 <CodeAssistant 
                   code={code} 

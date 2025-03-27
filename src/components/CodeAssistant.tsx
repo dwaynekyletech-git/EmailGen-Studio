@@ -166,13 +166,21 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
   const [activeTool, setActiveTool] = useState<'chat' | 'suggestions'>('chat');
   const messagesEndRef = { current: null as HTMLDivElement | null };
   const codeRef = { current: code };
+  const [messagesInitialized, setMessagesInitialized] = useState(false);
 
-  // Scroll to bottom of chat when messages change
+  // Scroll to bottom of chat only when new messages are added after initialization
   useEffect(() => {
-    if (messagesEndRef.current) {
+    // Skip the initial render to prevent scrolling on page load
+    if (!messagesInitialized) {
+      setMessagesInitialized(true);
+      return;
+    }
+    
+    // Only scroll when messages actually change after the initial load
+    if (messagesEndRef.current && messages.length > 1) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages]);
+  }, [messages, messagesInitialized]);
 
   // Update codeRef when code changes
   useEffect(() => {
