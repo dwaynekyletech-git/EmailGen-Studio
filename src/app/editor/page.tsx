@@ -5,13 +5,14 @@ import CodeMirror from "@uiw/react-codemirror";
 import { html } from "@codemirror/lang-html";
 import { oneDark } from "@codemirror/theme-one-dark";
 import Link from "next/link";
-import { saveEmailVersion } from "@/lib/api-service";
+import { saveEmailVersion, getEmailVersions } from "@/lib/api-service";
 import { useUser } from "@clerk/nextjs";
 import { v4 as uuidv4 } from 'uuid';
 import { useTheme } from 'next-themes';
 import CodeAssistant from "@/components/CodeAssistant";
 import CommandPalette from "@/components/CommandPalette";
 import CodeTooltip from "@/components/CodeTooltip";
+import VersionHistory from "@/components/VersionHistory";
 
 // Default HTML to use if no uploaded HTML is available
 const DEFAULT_HTML = `<!DOCTYPE html>
@@ -49,6 +50,8 @@ export default function EditorPage() {
   const { user } = useUser();
   const { theme, setTheme } = useTheme();
   const isDarkMode = theme === 'dark';
+  const [isLoading, setIsLoading] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
 
   // Add keyboard event listener within the useEffect
   useEffect(() => {
@@ -202,6 +205,41 @@ export default function EditorPage() {
     }
   };
 
+  // Add function to load the most recent draft
+  const handleLoadDraft = async () => {
+    if (!emailId) return;
+    
+    try {
+      setIsLoading(true);
+      setSaveError(null);
+      
+      // Get all versions of this email
+      const response = await getEmailVersions(emailId);
+      
+      if (response && response.versions && response.versions.length > 0) {
+        // Sort by version number to get the most recent
+        const sortedVersions = response.versions.sort((a: {version: number}, b: {version: number}) => b.version - a.version);
+        const latestVersion = sortedVersions[0];
+        
+        // Update the code editor with the content
+        setCode(latestVersion.html_content);
+        
+        // Show a success message
+        setSaveSuccess(true);
+        setTimeout(() => {
+          setSaveSuccess(false);
+        }, 3000);
+      } else {
+        setSaveError("No saved drafts found for this email");
+      }
+    } catch (error) {
+      console.error('Load error:', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to load draft');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Handle command execution from command palette
   const handleExecuteCommand = (command: string) => {
     console.log(`Executing command: ${command}`);
@@ -263,6 +301,20 @@ export default function EditorPage() {
     }
   };
 
+  // Add function to open version history
+  const openVersionHistory = () => {
+    setIsVersionHistoryOpen(true);
+  };
+
+  // Add function to handle loading a specific version
+  const handleLoadVersionFromHistory = (htmlContent: string) => {
+    setCode(htmlContent);
+    setSaveSuccess(true);
+    setTimeout(() => {
+      setSaveSuccess(false);
+    }, 3000);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">HTML Email Editor</h1>
@@ -295,6 +347,19 @@ export default function EditorPage() {
             </button>
 
             <div className="flex items-center space-x-2">
+              <button
+                onClick={openVersionHistory}
+                className="px-3 py-1 text-sm border rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                Version History
+              </button>
+              <button
+                onClick={handleLoadDraft}
+                disabled={isLoading}
+                className="px-3 py-1 text-sm border rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? "Loading..." : "Load Draft"}
+              </button>
               <button
                 onClick={handleSaveDraft}
                 disabled={isSaving}
@@ -529,6 +594,15 @@ export default function EditorPage() {
               Proceed to QA
             </Link>
           </div>
+
+          {/* Version History Modal */}
+          {isVersionHistoryOpen && emailId && (
+            <VersionHistory
+              emailId={emailId}
+              onLoadVersion={handleLoadVersionFromHistory}
+              onClose={() => setIsVersionHistoryOpen(false)}
+            />
+          )}
         </>
       )}
     </div>
