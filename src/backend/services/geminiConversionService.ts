@@ -15,6 +15,13 @@ interface ConversionResult {
   };
 }
 
+// Define conversion options interface
+interface ConversionOptions {
+  makeResponsive: boolean;
+  optimizeForEmail: boolean;
+  targetPlatform: 'sfmc' | 'generic';
+}
+
 /**
  * Gemini-powered service to convert design files to HTML
  */
@@ -144,6 +151,7 @@ I have a design file named "${fileName}" that I need to convert to HTML.
 
 Please convert this design into an HTML email that is:
 - Fully responsive for all devices
+    - The ${fileName} has the design for both the desktop and mobile versions of the email. Make sure the desktop and mobile versions are both included in the HTML. 
 - Compatible with email clients
 - Specifically optimized for Salesforce Marketing Cloud
 
@@ -151,6 +159,7 @@ The HTML should:
 1. Use table-based layout for email client compatibility
 2. Include proper meta tags and media queries for responsiveness
 3. Use inline CSS for maximum email client compatibility
+    - The ${fileName} has inline CSS. Make sure to follow the design of the inline CSS, including font sizes, colors, text styles, etc.
 4. Follow accessibility best practices
 5. Include comments explaining the structure
 
@@ -259,39 +268,194 @@ Please provide only the complete HTML code without any explanations.
    * Streams the HTML generation process
    * @param filePath Path to the file in Supabase storage
    * @param fileName Original file name
-   * @param fileBuffer Optional array buffer of the file (for simulated paths)
+   * @param options Conversion options or file buffer for backward compatibility
    */
   public async streamConversion(
     filePath: string,
     fileName: string,
-    fileBuffer?: ArrayBuffer
+    options?: ConversionOptions | ArrayBuffer
   ): Promise<Response> {
     try {
-      console.log(`Converting design file for streaming: ${fileName}`);
+      console.log(`Streaming conversion for: ${fileName}`);
+      
+      let fileBuffer: ArrayBuffer | undefined;
+      
+      // Handle backward compatibility - check if options is actually an ArrayBuffer
+      if (options instanceof ArrayBuffer) {
+        fileBuffer = options;
+        options = {
+          makeResponsive: true,
+          optimizeForEmail: true,
+          targetPlatform: 'sfmc'
+        };
+      }
       
       // Get the file extension
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
       
-      // Convert the design file to an image
+      // Convert the design file to an image buffer
       const imageBuffer = await this.convertDesignToImage(filePath, fileExtension, fileBuffer);
       
-      // Generate HTML using Gemini
-      const html = await this.generateHtmlWithGemini(imageBuffer, fileName, fileExtension);
+      // Get appropriate MIME type
+      const mimeType = this.getMimeType(fileExtension);
       
-      // Create a ReadableStream to simulate streaming
+      // Create a prompt using the options
+      const prompt = `
+You are an expert email developer specializing in converting design files to responsive HTML emails.
+
+I have a design file named "${fileName}" that I need to convert to HTML.
+
+Please convert this design into ${options?.optimizeForEmail ? 'an HTML email' : 'HTML'} that is:
+${options?.makeResponsive ? '- Fully responsive for all devices' : '- Optimized for desktop viewing'}
+${options?.optimizeForEmail ? '- Compatible with email clients' : '- Compatible with web browsers'}
+${options?.targetPlatform === 'sfmc' ? '- Specifically optimized for Salesforce Marketing Cloud' : '- Using standard HTML practices'}
+
+The HTML should:
+1. Use table-based layout for email client compatibility
+2. Include proper meta tags and media queries for responsiveness
+3. Use inline CSS for maximum email client compatibility
+4. Follow accessibility best practices
+5. Include comments explaining the structure
+
+Please provide only the complete HTML code without any explanations.
+`;
+
+      // Convert image to data URL
+      const imageDataUrl = this.arrayBufferToDataURL(imageBuffer, mimeType);
+      
+      // Setup Gemini model with streaming
+      const model = this.gemini.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+          },
+        ],
+      });
+      
+      // Create a streaming response
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
       
-      // Write the HTML to the stream
-      const encoder = new TextEncoder();
-      writer.write(encoder.encode(html));
-      writer.close();
+      // Start the streaming process
+      (async () => {
+        try {
+          const result = await model.generateContentStream({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: prompt },
+                  { inlineData: { mimeType, data: imageDataUrl.split(',')[1] } }
+                ]
+              }
+            ],
+          });
+          
+          let isFirstChunk = true;
+          let htmlContent = '';
+          
+          // Process the stream
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            htmlContent += chunkText;
+            
+            // Detect if this is HTML content
+            if (isFirstChunk) {
+              isFirstChunk = false;
+              // Write the initial JSON object with status
+              await writer.write(
+                new TextEncoder().encode(
+                  JSON.stringify({
+                    status: 'processing',
+                    message: 'Converting design to HTML...'
+                  }) + '\n'
+                )
+              );
+            }
+            
+            // Send the chunk to the client
+            await writer.write(
+              new TextEncoder().encode(
+                JSON.stringify({
+                  status: 'chunk',
+                  data: chunkText
+                }) + '\n'
+              )
+            );
+          }
+          
+          // Clean up the HTML - extract from markdown if needed
+          const htmlMatch = htmlContent.match(/```html\s*([\s\S]*?)\s*```/) || 
+                            htmlContent.match(/```\s*([\s\S]*?)\s*```/) ||
+                            [null, htmlContent];
+          
+          const cleanedHtml = htmlMatch[1] || htmlContent;
+          
+          // Complete the response
+          await writer.write(
+            new TextEncoder().encode(
+              JSON.stringify({
+                status: 'complete',
+                message: 'Conversion completed',
+                html: cleanedHtml,
+                metadata: {
+                  originalFileName: fileName,
+                  conversionTimestamp: new Date().toISOString(),
+                  designType: fileExtension.replace('.', '').toUpperCase(),
+                  responsive: options?.makeResponsive ?? true
+                }
+              }) + '\n'
+            )
+          );
+          
+          await writer.close();
+        } catch (error) {
+          console.error('Streaming error:', error);
+          await writer.write(
+            new TextEncoder().encode(
+              JSON.stringify({
+                status: 'error',
+                error: `Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+              }) + '\n'
+            )
+          );
+          await writer.close();
+        }
+      })();
       
-      // Return the readable stream as the response
-      return new Response(readable);
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+      });
     } catch (error) {
-      console.error('Error streaming conversion:', error);
-      throw new Error('Failed to stream conversion');
+      console.error('Stream setup error:', error);
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          error: `Failed to set up streaming: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
   }
 }
