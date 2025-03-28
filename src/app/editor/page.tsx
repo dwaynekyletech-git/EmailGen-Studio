@@ -453,13 +453,15 @@ export default function EditorPage() {
                     className="bg-white flex justify-center transition-all duration-300 ease-in-out"
                     style={{ 
                       height: isPreviewFullscreen ? "calc(100vh - 200px)" : "500px",
-                      overflow: "auto"
+                      overflow: "auto",
+                      width: "100%"
                     }}
                   >
                     <div 
-                      className="transition-all duration-300 ease-in-out"
+                      className="transition-all duration-300 ease-in-out flex items-center justify-center"
                       style={{
-                        width: isMobileView ? "375px" : "800px",
+                        width: isMobileView ? "375px" : (isPreviewFullscreen ? "1024px" : "100%"),
+                        minWidth: !isMobileView ? "640px" : "auto",
                         height: "100%",
                         border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
                         borderRadius: isMobileView ? "20px" : "4px",
