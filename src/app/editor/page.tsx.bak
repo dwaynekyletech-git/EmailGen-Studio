@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { html } from "@codemirror/lang-html";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView } from "@uiw/react-codemirror";
 import Link from "next/link";
 import { saveEmailVersion, getEmailVersions } from "@/lib/api-service";
 import { useUser } from "@clerk/nextjs";
@@ -399,7 +398,7 @@ export default function EditorPage() {
                   <CodeMirror
                     value={code}
                     height={isEditorFullscreen ? "calc(100vh - 200px)" : "500px"}
-                    extensions={[html(), EditorView.lineWrapping]}
+                    extensions={[html()]}
                     onChange={handleCodeChange}
                     theme={isDarkMode ? oneDark : undefined}
                     className="text-sm"
@@ -454,15 +453,13 @@ export default function EditorPage() {
                     className="bg-white flex justify-center transition-all duration-300 ease-in-out"
                     style={{ 
                       height: isPreviewFullscreen ? "calc(100vh - 200px)" : "500px",
-                      overflow: "auto",
-                      width: "100%"
+                      overflow: "auto"
                     }}
                   >
                     <div 
-                      className="transition-all duration-300 ease-in-out flex items-center justify-center"
+                      className="transition-all duration-300 ease-in-out"
                       style={{
-                        width: isMobileView ? "375px" : (isPreviewFullscreen ? "1024px" : "100%"),
-                        minWidth: !isMobileView ? "640px" : "auto",
+                        width: isMobileView ? "375px" : "800px",
                         height: "100%",
                         border: isMobileView ? "10px solid #333" : "1px solid #e5e7eb",
                         borderRadius: isMobileView ? "20px" : "4px",
@@ -486,22 +483,20 @@ export default function EditorPage() {
                               .desktop-content {
                                 display: none !important;
                               }
-                            </style>
-                            <script>
-                              document.addEventListener('DOMContentLoaded', function() {
-                                document.body.addEventListener('click', function(e) {
-                                  if (e.target.tagName === 'A' || e.target.closest('a')) {
-                                    e.preventDefault();
-                                    const link = e.target.tagName === 'A' ? e.target : e.target.closest('a');
-                                    const href = link.getAttribute('href');
-                                    if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-                                      window.parent.open(href, '_blank');
-                                    }
-                                  }
-                                }, true);
-                              });
-                            </script>
-                            </head>`
+                              
+                              /* Debug info - Comment out in production */
+                              body::before {
+                                content: "Mobile View";
+                                display: block;
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                background: red;
+                                color: white;
+                                padding: 5px;
+                                z-index: 9999;
+                              }
+                            </style></head>`
                           ) : 
                           code.replace(
                             '</head>',
@@ -515,27 +510,25 @@ export default function EditorPage() {
                               .desktop-content {
                                 display: table !important;
                               }
-                            </style>
-                            <script>
-                              document.addEventListener('DOMContentLoaded', function() {
-                                document.body.addEventListener('click', function(e) {
-                                  if (e.target.tagName === 'A' || e.target.closest('a')) {
-                                    e.preventDefault();
-                                    const link = e.target.tagName === 'A' ? e.target : e.target.closest('a');
-                                    const href = link.getAttribute('href');
-                                    if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-                                      window.parent.open(href, '_blank');
-                                    }
-                                  }
-                                }, true);
-                              });
-                            </script>
-                            </head>`
+                              
+                              /* Debug info - Comment out in production */
+                              body::before {
+                                content: "Desktop View${isPreviewFullscreen ? ' (Fullscreen)' : ''}";
+                                display: block;
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                background: green;
+                                color: white;
+                                padding: 5px;
+                                z-index: 9999;
+                              }
+                            </style></head>`
                           )
                         }
                         title="Email Preview"
                         className="w-full h-full border-0"
-                        sandbox="allow-same-origin allow-scripts allow-popups allow-top-navigation"
+                        sandbox="allow-same-origin"
                         style={{
                           width: "100%",
                           height: "100%"
@@ -579,8 +572,8 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* Show Code Assistant when visible, regardless of fullscreen states */}
-            {isCodeAssistantVisible && (
+            {/* Show Code Assistant only when neither editor nor preview is in fullscreen mode and it's visible */}
+            {!isEditorFullscreen && !isPreviewFullscreen && isCodeAssistantVisible && (
               <div className="border rounded-lg overflow-hidden">
                 <CodeAssistant 
                   code={code} 

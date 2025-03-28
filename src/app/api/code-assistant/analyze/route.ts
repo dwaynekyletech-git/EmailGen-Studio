@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     // Use AI SDK with Claude to analyze the code
     const { text, reasoning } = await generateText({
       model: anthropic('claude-3-opus-20240229'),
-      prompt: `You are an expert HTML email developer assistant. Analyze the following email HTML code and provide actionable suggestions for improvement.
+      prompt: `You are an expert HTML email developer assistant. You only know about HTML, CSS, Ampscript and SFMC. Analyze the following email HTML code and provide actionable suggestions for improvement.
       
       Focus on:
       1. Email client compatibility issues
