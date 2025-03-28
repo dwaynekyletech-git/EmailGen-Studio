@@ -486,7 +486,18 @@ export default function EditorPage() {
                               .desktop-content {
                                 display: none !important;
                               }
-                            </style></head>`
+                            </style>
+                            <script>
+                              document.addEventListener('DOMContentLoaded', function() {
+                                document.body.addEventListener('click', function(e) {
+                                  if (e.target.tagName === 'A' || e.target.closest('a')) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }
+                                }, true);
+                              });
+                            </script>
+                            </head>`
                           ) : 
                           code.replace(
                             '</head>',
@@ -500,12 +511,23 @@ export default function EditorPage() {
                               .desktop-content {
                                 display: table !important;
                               }
-                            </style></head>`
+                            </style>
+                            <script>
+                              document.addEventListener('DOMContentLoaded', function() {
+                                document.body.addEventListener('click', function(e) {
+                                  if (e.target.tagName === 'A' || e.target.closest('a')) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }
+                                }, true);
+                              });
+                            </script>
+                            </head>`
                           )
                         }
                         title="Email Preview"
                         className="w-full h-full border-0"
-                        sandbox="allow-same-origin"
+                        sandbox="allow-same-origin allow-scripts"
                         style={{
                           width: "100%",
                           height: "100%"
