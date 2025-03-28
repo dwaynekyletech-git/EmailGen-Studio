@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { html } from "@codemirror/lang-html";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@uiw/react-codemirror";
 import Link from "next/link";
 import { saveEmailVersion, getEmailVersions } from "@/lib/api-service";
 import { useUser } from "@clerk/nextjs";
@@ -398,7 +399,7 @@ export default function EditorPage() {
                   <CodeMirror
                     value={code}
                     height={isEditorFullscreen ? "calc(100vh - 200px)" : "500px"}
-                    extensions={[html()]}
+                    extensions={[html(), EditorView.lineWrapping]}
                     onChange={handleCodeChange}
                     theme={isDarkMode ? oneDark : undefined}
                     className="text-sm"
