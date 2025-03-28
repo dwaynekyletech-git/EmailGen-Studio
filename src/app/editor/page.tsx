@@ -549,8 +549,8 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* Show Code Assistant only when neither editor nor preview is in fullscreen mode and it's visible */}
-            {!isEditorFullscreen && !isPreviewFullscreen && isCodeAssistantVisible && (
+            {/* Show Code Assistant when visible, regardless of fullscreen states */}
+            {isCodeAssistantVisible && (
               <div className="border rounded-lg overflow-hidden">
                 <CodeAssistant 
                   code={code} 
