@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { PDFDocument } from 'pdf-lib';
 
 // Define interfaces for the service
 interface ConversionResult {
@@ -53,20 +54,81 @@ export class GeminiConversionService {
    * @param fileExtension The file extension
    */
   private getMimeType(fileExtension: string): string {
-    // For Gemini, we need to use image MIME types
-    // For non-image files, we'll use application/octet-stream
+    // For Gemini, we need to use specific MIME types
+    // Only PDF files are accepted now
     const mimeTypes: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.psd': 'application/octet-stream',
-      '.xd': 'application/octet-stream',
-      '.fig': 'application/octet-stream'
+      '.pdf': 'application/pdf'
     };
     
     return mimeTypes[fileExtension] || 'application/octet-stream';
   }
   
+  /**
+   * Validates that the file is a PDF
+   * @param fileExtension The file extension
+   */
+  private validateFileType(fileExtension: string): boolean {
+    return fileExtension.toLowerCase() === '.pdf';
+  }
+
+  /**
+   * Process a PDF file to extract pages
+   * @param pdfBuffer The PDF file as a buffer
+   * @returns An array of data URLs for each page
+   */
+  private async processPdfFile(pdfBuffer: ArrayBuffer): Promise<string[]> {
+    try {
+      console.log('Processing PDF to extract pages');
+      const pageDataUrls: string[] = [];
+      
+      // Extract pages with pdf-lib
+      const pdfDoc = await PDFDocument.load(pdfBuffer);
+      const pageCount = pdfDoc.getPageCount();
+      
+      console.log(`PDF has ${pageCount} pages`);
+      
+      // Extract each page
+      for (let i = 0; i < pageCount; i++) {
+        try {
+          // Create a new PDF document containing just this page
+          const singlePagePdf = await PDFDocument.create();
+          const [copiedPage] = await singlePagePdf.copyPages(pdfDoc, [i]);
+          singlePagePdf.addPage(copiedPage);
+          
+          // Save the single-page PDF as binary data
+          const singlePagePdfBytes = await singlePagePdf.save();
+          
+          // Convert to base64 data URL
+          const dataUrl = this.arrayBufferToDataURL(
+            new Uint8Array(singlePagePdfBytes).buffer, 
+            'application/pdf'
+          );
+          
+          pageDataUrls.push(dataUrl);
+          console.log(`Page ${i+1} processed successfully as PDF`);
+        } catch (error) {
+          console.error(`Error processing page ${i+1}:`, error);
+        }
+      }
+      
+      // If we couldn't extract any pages, use the full PDF
+      if (pageDataUrls.length === 0) {
+        console.log('Falling back to using entire PDF');
+        const dataUrl = this.arrayBufferToDataURL(pdfBuffer, 'application/pdf');
+        pageDataUrls.push(dataUrl);
+      }
+      
+      return pageDataUrls;
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      
+      // Fallback to just passing the entire PDF
+      console.log('Falling back to using entire PDF without processing');
+      const dataUrl = this.arrayBufferToDataURL(pdfBuffer, 'application/pdf');
+      return [dataUrl];
+    }
+  }
+
   /**
    * Converts a design file to a format Gemini can process
    * @param filePath Path to the file in Supabase storage or a temp path
@@ -79,6 +141,11 @@ export class GeminiConversionService {
     fileBuffer?: ArrayBuffer
   ): Promise<ArrayBuffer> {
     console.log(`Processing design file: ${filePath} (${fileType})`);
+    
+    // Validate file type is PDF
+    if (!this.validateFileType(fileType)) {
+      throw new Error(`Unsupported file type: ${fileType}. Only PDF files are accepted.`);
+    }
     
     // If a buffer is directly provided, use it instead of downloading
     if (fileBuffer) {
@@ -105,13 +172,6 @@ export class GeminiConversionService {
       }
       
       const arrayBuffer = await data.arrayBuffer();
-      
-      // For non-image files, log a warning
-      if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
-        console.warn(`File type ${fileType} is being sent directly to Gemini. This may work for some files but could fail for others.`);
-        console.warn(`For best results, consider pre-converting ${fileType} files to PNG before uploading.`);
-      }
-      
       return arrayBuffer;
     } catch (error) {
       console.error('Error in file processing:', error);
@@ -135,23 +195,35 @@ export class GeminiConversionService {
     // Get the appropriate MIME type for the file
     const mimeType = this.getMimeType(fileType);
     
-    // For non-image files, we should show a warning
-    if (['.psd', '.xd', '.fig'].includes(fileType.toLowerCase())) {
-      console.warn(`Attempting to process ${fileType} file with Gemini. This may have limited compatibility.`);
-    }
+    // Process the PDF file to extract pages
+    const pdfPages = await this.processPdfFile(imageBuffer);
+    console.log(`Extracted ${pdfPages.length} pages from PDF`);
     
-    // Convert the image buffer to a data URL
-    const imageDataUrl = this.arrayBufferToDataURL(imageBuffer, mimeType);
-    
-    // Create a prompt for Gemini
+    // Create a prompt for Gemini with information about multiple pages
     const prompt = `
 You are an expert email developer specializing in converting design files to responsive HTML emails.
 
-I have a design file named "${fileName}" that I need to convert to HTML.
+I have a PDF design file named "${fileName}" that contains a single page with both desktop and mobile versions of the email.
+
+This PDF has only one page that I'm providing to you:
+- This single page contains both the desktop and mobile versions of the email design.
+- The desktop version is typically wider and appears on the left or top portion of the PDF.
+- The mobile version is narrower and appears on the right or bottom portion of the PDF.
+
+IMPORTANT: You MUST implement the EXACT design shown in the PDF, including:
+- All text content exactly as it appears in the design
+- All images, buttons, and layout elements in their exact positions
+- The precise fonts, colors, and spacing shown
+- The exact layout structure for both desktop and mobile designs
+
+DO NOT use placeholders like "desktop content" or "mobile content". 
+IMPLEMENT THE FULL HTML for the ACTUAL DESIGN shown in the PDF.
 
 Please convert this design into an HTML email that is:
 - Fully responsive for all devices
-    - The ${fileName} has the design for both the desktop and mobile versions of the email. Make sure the desktop and mobile versions are both included in the HTML. 
+- The desktop version should be used to create the desktop view of the email
+- The mobile version should be used to create the mobile view of the email using media queries
+- All responsive elements should transform exactly as shown in both designs
 - Compatible with email clients
 - Specifically optimized for Salesforce Marketing Cloud
 
@@ -159,17 +231,25 @@ The HTML should:
 1. Use table-based layout for email client compatibility
 2. Include proper meta tags and media queries for responsiveness
 3. Use inline CSS for maximum email client compatibility
-    - The ${fileName} has inline CSS. Make sure to follow the design of the inline CSS, including font sizes, colors, text styles, etc.
-4. Follow accessibility best practices
-5. Include comments explaining the structure
+4. Ensure font sizes, spacing, and layouts match both designs precisely
+5. Follow accessibility best practices
+6. Include commented sections to clearly identify desktop vs. mobile-specific code
+
+Again, it is CRITICAL that you do not use placeholders - implement the actual design content exactly as shown in the PDF.
 
 Please provide only the complete HTML code without any explanations.
 `;
 
     try {
-      // Use Gemini Flash model
+      // Use Gemini Flash model with temperature 0 for consistent results
       const model = this.gemini.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
+        generationConfig: {
+          temperature: 0,
+          topP: 0.95,
+          topK: 0,
+          maxOutputTokens: 8192,
+        },
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -190,15 +270,28 @@ Please provide only the complete HTML code without any explanations.
         ],
       });
       
-      // Create a multipart content array with text and image
+      // Create parts array with text prompt and PDF pages
+      const parts: any[] = [{ text: prompt }];
+      
+      // Add all PDF pages to the parts array
+      for (let i = 0; i < pdfPages.length; i++) {
+        const pageDataUrl = pdfPages[i];
+        const isImageData = pageDataUrl.startsWith('data:image/');
+        
+        parts.push({ 
+          inlineData: { 
+            mimeType: isImageData ? 'image/png' : 'application/pdf', 
+            data: pageDataUrl.split(',')[1]
+          }
+        });
+      }
+      
+      // Send the multipart content to Gemini
       const result = await model.generateContent({
         contents: [
           {
             role: "user",
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType, data: imageDataUrl.split(',')[1] } }
-            ]
+            parts: parts
           }
         ],
       });
@@ -235,6 +328,11 @@ Please provide only the complete HTML code without any explanations.
       
       // Get the file extension
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
+      
+      // Validate file type
+      if (!this.validateFileType(fileExtension)) {
+        throw new Error(`Unsupported file type: ${fileExtension}. Only PDF files are accepted.`);
+      }
       
       // Convert the design file to an image/buffer
       const imageBuffer = await this.convertDesignToImage(filePath, fileExtension, fileBuffer);
@@ -293,39 +391,68 @@ Please provide only the complete HTML code without any explanations.
       // Get the file extension
       const fileExtension = '.' + fileName.split('.').pop()?.toLowerCase();
       
+      // Validate file type
+      if (!this.validateFileType(fileExtension)) {
+        throw new Error(`Unsupported file type: ${fileExtension}. Only PDF files are accepted.`);
+      }
+      
       // Convert the design file to an image buffer
       const imageBuffer = await this.convertDesignToImage(filePath, fileExtension, fileBuffer);
       
-      // Get appropriate MIME type
-      const mimeType = this.getMimeType(fileExtension);
+      // Process the PDF file
+      const pdfPages = await this.processPdfFile(imageBuffer);
+      console.log(`Extracted ${pdfPages.length} pages from PDF for streaming`);
       
       // Create a prompt using the options
       const prompt = `
 You are an expert email developer specializing in converting design files to responsive HTML emails.
 
-I have a design file named "${fileName}" that I need to convert to HTML.
+I have a multi-page PDF design file named "${fileName}" that contains separate pages for desktop and mobile versions of the email.
 
-Please convert this design into ${options?.optimizeForEmail ? 'an HTML email' : 'HTML'} that is:
+This PDF has ${pdfPages.length} pages that I'm providing to you:
+- Page 1 contains the desktop version of the email design
+${pdfPages.length >= 2 ? '- Page 2 contains the mobile version of the email design' : ''}
+${pdfPages.length > 2 ? `- The remaining ${pdfPages.length - 2} pages contain additional design elements or content` : ''}
+
+IMPORTANT: You MUST implement BOTH the desktop AND mobile versions shown in the different pages of the PDF:
+- Analyze each page separately for its specific purpose (desktop or mobile)
+- Extract all content, styling, and layout from each page precisely
+- Ensure the responsive design switches correctly between desktop and mobile layouts
+- Do not mix elements between pages unless they are clearly the same element in different views
+
+DO NOT use placeholders like "desktop content" or "mobile content". 
+IMPLEMENT THE FULL HTML for the ACTUAL DESIGNS shown across all pages of the PDF.
+
+Please convert these designs into ${options?.optimizeForEmail ? 'an HTML email' : 'HTML'} that is:
 ${options?.makeResponsive ? '- Fully responsive for all devices' : '- Optimized for desktop viewing'}
+${options?.makeResponsive ? '- The desktop version in page 1 should be used to create the desktop view of the email' : ''}
+${options?.makeResponsive ? '- The mobile version in page 2 should be used to create the mobile view of the email using media queries' : ''}
+${options?.makeResponsive ? '- All responsive elements should transform exactly as shown in the desktop vs mobile designs' : ''}
 ${options?.optimizeForEmail ? '- Compatible with email clients' : '- Compatible with web browsers'}
 ${options?.targetPlatform === 'sfmc' ? '- Specifically optimized for Salesforce Marketing Cloud' : '- Using standard HTML practices'}
 
 The HTML should:
 1. Use table-based layout for email client compatibility
-2. Include proper meta tags and media queries for responsiveness
+2. Include proper meta tags and media queries for responsiveness that accurately reflect the mobile design in the PDF
 3. Use inline CSS for maximum email client compatibility
-4. Follow accessibility best practices
-5. Include comments explaining the structure
+4. Ensure font sizes, spacing, and layouts match both desktop and mobile designs precisely
+5. Follow accessibility best practices
+6. Include commented sections to clearly identify desktop vs. mobile-specific code
+
+Again, it is CRITICAL that you do not use placeholders - implement the actual design content exactly as shown across all pages of the PDF.
 
 Please provide only the complete HTML code without any explanations.
 `;
 
-      // Convert image to data URL
-      const imageDataUrl = this.arrayBufferToDataURL(imageBuffer, mimeType);
-      
-      // Setup Gemini model with streaming
+      // Setup Gemini model with streaming and temperature 0
       const model = this.gemini.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
+        generationConfig: {
+          temperature: 0,
+          topP: 0.95,
+          topK: 0,
+          maxOutputTokens: 8192,
+        },
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -350,6 +477,22 @@ Please provide only the complete HTML code without any explanations.
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
       
+      // Create parts array with text prompt and PDF pages
+      const parts: any[] = [{ text: prompt }];
+      
+      // Add all PDF pages to the parts array
+      for (let i = 0; i < pdfPages.length; i++) {
+        const pageDataUrl = pdfPages[i];
+        const isImageData = pageDataUrl.startsWith('data:image/');
+        
+        parts.push({ 
+          inlineData: { 
+            mimeType: isImageData ? 'image/png' : 'application/pdf', 
+            data: pageDataUrl.split(',')[1]
+          }
+        });
+      }
+      
       // Start the streaming process
       (async () => {
         try {
@@ -357,10 +500,7 @@ Please provide only the complete HTML code without any explanations.
             contents: [
               {
                 role: "user",
-                parts: [
-                  { text: prompt },
-                  { inlineData: { mimeType, data: imageDataUrl.split(',')[1] } }
-                ]
+                parts: parts
               }
             ],
           });
@@ -478,4 +618,4 @@ export function createGeminiConversionService(): GeminiConversionService {
 }
 
 // Default export
-export default createGeminiConversionService; 
+export default createGeminiConversionService;

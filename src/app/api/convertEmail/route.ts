@@ -36,12 +36,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Validate file type
-    const validTypes = ['.png', '.jpg', '.jpeg', '.psd', '.xd', '.fig'];
+    const validTypes = ['.pdf'];
     const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!validTypes.includes(fileExt)) {
       return NextResponse.json(
-        { error: `Invalid file type. Supported types: ${validTypes.join(', ')}` }, 
+        { error: `Invalid file type. Only PDF files are supported.` }, 
         { status: 400 }
       );
     }

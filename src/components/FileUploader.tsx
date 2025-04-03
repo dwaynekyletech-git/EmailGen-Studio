@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { PDFDocument } from 'pdf-lib';
 
 // Create a global variable to store HTML until it can be used
 if (typeof window !== 'undefined') {
@@ -59,29 +60,100 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     }
   };
 
-  const handleFileUpload = async (file: File): Promise<void> => {
-    if (!file) {
-      setError('Please select a file');
-      return;
-    }
-    
+  // Helper function to check if PDF has multiple pages
+  const checkPdfPageCount = async (file: File): Promise<number> => {
     try {
-      setIsUploading(true);
-      setError(null);
-      setUploadProgress(0);
-      setConversionProgress(0);
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      return pdfDoc.getPageCount();
+    } catch (error) {
+      console.error('Error checking PDF page count:', error);
+      return 1; // Default to 1 page on error
+    }
+  };
+
+  // Handle streaming conversion
+  const handleStreamingConversion = async (file: File, formData: FormData): Promise<void> => {
+    try {
+      console.log('Using streaming conversion for multi-page PDF');
       
-      // Create form data for the API request
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('makeResponsive', makeResponsive.toString());
-      formData.append('optimizeForEmail', optimizeForEmail.toString());
-      formData.append('targetPlatform', targetPlatform);
+      // Update progress for upload
+      setUploadProgress(50);
       
-      // Log the request
-      console.log('Sending file to API:', file.name, file.type, file.size);
+      // Send to streaming API endpoint
+      const response = await fetch('/api/convertEmail/stream', {
+        method: 'POST',
+        body: formData,
+      });
       
-      // Post to the ConvertEmail API route
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to convert file');
+      }
+      
+      setUploadProgress(100);
+      
+      // Process the streaming response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+      
+      let html = '';
+      let conversionId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Read chunks of the stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // Convert chunk to text
+        const chunkText = new TextDecoder().decode(value);
+        
+        // Each line is a JSON object
+        const lines = chunkText.split('\n').filter(Boolean);
+        
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            
+            if (data.status === 'processing') {
+              // Initial processing message
+              setConversionProgress(10);
+            } else if (data.status === 'chunk') {
+              // Incremental content
+              html += data.data;
+              setConversionProgress(Math.min(90, conversionProgress + 5));
+            } else if (data.status === 'complete') {
+              // Final HTML and metadata
+              html = data.html || html;
+              setConversionProgress(100);
+              
+              // Store the HTML and redirect
+              await storeHtmlAndRedirect(html, conversionId);
+              break;
+            } else if (data.status === 'error') {
+              // Error in processing
+              throw new Error(data.error || 'Error during conversion');
+            }
+          } catch (parseError) {
+            console.error('Error parsing streaming chunk:', parseError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming conversion error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to convert file');
+      setIsUploading(false);
+    }
+  };
+
+  // Handle regular conversion
+  const handleRegularConversion = async (file: File, formData: FormData): Promise<void> => {
+    try {
+      console.log('Using regular conversion for single-page PDF');
+      
+      // Send to regular API endpoint
       const response = await fetch('/api/convertEmail', {
         method: 'POST',
         body: formData,
@@ -93,57 +165,108 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         throw new Error(errorData.error || 'Failed to convert file');
       }
       
+      // Update progress
+      setUploadProgress(100);
+      setConversionProgress(50);
+      
       // Process successful response
       const data = await response.json();
       console.log('API Response SUCCESS, html length:', data.html?.length);
+      
+      setConversionProgress(100);
       
       if (data.html) {
         // Generate a unique ID for this conversion
         const conversionId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         console.log('Generated conversion ID:', conversionId);
         
-        // MULTIPLE STORAGE APPROACH - using all available methods for redundancy
-        try {
-          // 1. Store in sessionStorage with the conversion ID
-          sessionStorage.setItem(`html_${conversionId}`, data.html);
-          
-          // 2. Store in sessionStorage with a fixed key as fallback
-          sessionStorage.setItem('emailHtml', data.html);
-          
-          // 3. Set a cookie with the conversion ID
-          document.cookie = `emailConversionId=${conversionId}; path=/; max-age=300`;
-          
-          // 4. Store in localStorage through a transport object
-          const transport = {
-            html: data.html,
-            timestamp: Date.now(),
-            id: conversionId
-          };
-          localStorage.setItem('emailHtmlTransport', JSON.stringify(transport));
-          
-          // 5. Set global variable
-          if (typeof window !== 'undefined') {
-            (window as any).__EMAIL_HTML_CONTENT__ = data.html;
-          }
-          
-          // DELAY 500ms to ensure storage is complete before navigation
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-        } catch (storageError) {
-          console.error('Failed to store HTML:', storageError);
-        }
-        
-        // Redirect to editor page with the conversion ID
-        console.log('Redirecting to editor page with ID:', conversionId);
-        router.push(`/editor?id=${conversionId}`);
+        await storeHtmlAndRedirect(data.html, conversionId);
       } else {
         throw new Error('No HTML content in the response');
       }
     } catch (error) {
+      console.error('Regular conversion error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to convert file');
+      setIsUploading(false);
+    }
+  };
+
+  // Helper to store HTML and redirect
+  const storeHtmlAndRedirect = async (html: string, conversionId: string): Promise<void> => {
+    try {
+      // MULTIPLE STORAGE APPROACH - using all available methods for redundancy
+      // 1. Store in sessionStorage with the conversion ID
+      sessionStorage.setItem(`html_${conversionId}`, html);
+      
+      // 2. Store in sessionStorage with a fixed key as fallback
+      sessionStorage.setItem('emailHtml', html);
+      
+      // 3. Set a cookie with the conversion ID
+      document.cookie = `emailConversionId=${conversionId}; path=/; max-age=300`;
+      
+      // 4. Store in localStorage through a transport object
+      const transport = {
+        html: html,
+        timestamp: Date.now(),
+        id: conversionId
+      };
+      localStorage.setItem('emailHtmlTransport', JSON.stringify(transport));
+      
+      // 5. Set global variable
+      if (typeof window !== 'undefined') {
+        (window as any).__EMAIL_HTML_CONTENT__ = html;
+      }
+      
+      // DELAY 500ms to ensure storage is complete before navigation
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Redirect to editor page with the conversion ID
+      console.log('Redirecting to editor page with ID:', conversionId);
+      router.push(`/editor?id=${conversionId}`);
+    } catch (storageError) {
+      console.error('Failed to store HTML:', storageError);
+      throw storageError;
+    }
+  };
+
+  const handleFileUpload = async (file: File): Promise<void> => {
+    if (!file) {
+      setError('Please select a file');
+      return;
+    }
+    
+    try {
+      setIsUploading(true);
+      setError(null);
+      setUploadProgress(10);
+      setConversionProgress(0);
+      
+      // Create form data for the API request
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('makeResponsive', makeResponsive.toString());
+      formData.append('optimizeForEmail', optimizeForEmail.toString());
+      formData.append('targetPlatform', targetPlatform);
+      
+      // Log the request
+      console.log('Processing file:', file.name, file.type, file.size);
+      
+      // Check if PDF has multiple pages
+      const pageCount = await checkPdfPageCount(file);
+      console.log(`PDF has ${pageCount} pages`);
+      setUploadProgress(30);
+      
+      // Use streaming for multi-page PDFs, regular for single page
+      if (pageCount > 1) {
+        await handleStreamingConversion(file, formData);
+      } else {
+        await handleRegularConversion(file, formData);
+      }
+      
+    } catch (error) {
       console.error('File upload error:', error);
       setError(error instanceof Error ? error.message : 'Failed to upload file');
-    } finally {
-      setIsUploading(true); // Keep this true to prevent multiple clicks
+      setIsUploading(false);
     }
   };
 
@@ -216,7 +339,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               Drag & drop your design file
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Supported formats: PNG, JPG
+              Supported formats: PDF
             </p>
             <p className="mt-2 text-xs text-gray-400">
               or click to select a file
@@ -227,7 +350,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           ref={(el) => { fileInputRef.current = el; }}
           type="file"
           className="hidden"
-          accept=".png,.jpg,.jpeg"
+          accept=".pdf"
           onChange={handleFileChange}
           disabled={isUploading}
         />

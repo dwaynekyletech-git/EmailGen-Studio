@@ -1,9 +1,17 @@
 import { NextRequest } from 'next/server';
-import supabase from '@/backend/config/supabaseConfig';
-import { getAuth } from '@clerk/nextjs/server';
 import { createGeminiConversionService } from '@/backend/services/geminiConversionService';
+import { getAuth } from '@clerk/nextjs/server';
+import { createClient } from '@supabase/supabase-js';
 
+// Explicitly set Edge runtime
 export const runtime = 'edge';
+
+// Initialize Supabase client directly in the route handler
+const createSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  return createClient(supabaseUrl, supabaseKey);
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,25 +37,24 @@ export async function POST(request: NextRequest) {
     }
     
     // Check file type
-    const validTypes = ['.png', '.jpg', '.jpeg'];
+    const validTypes = ['.pdf'];
     const fileType = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!validTypes.includes(fileType)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid file type. Supported types: PNG, JPG' }),
+        JSON.stringify({ error: 'Invalid file type. Only PDF files are supported.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
     
-    // Add warning for non-image files
-    if (['.psd', '.xd', '.fig'].includes(fileType)) {
-      console.warn(`Warning: ${fileType} files may have limited compatibility with Gemini's vision model. Attempting conversion anyway.`);
-    }
-    
-    // Upload file to Supabase Storage
+    // Convert file to array buffer
     const buffer = await file.arrayBuffer();
     const fileName = `${Date.now()}_${file.name}`;
     
+    // Create Supabase client
+    const supabase = createSupabaseClient();
+    
+    // Upload file to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase
       .storage
       .from('design-files')
