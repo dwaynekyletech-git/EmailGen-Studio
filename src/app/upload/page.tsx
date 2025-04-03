@@ -25,7 +25,7 @@ export default function UploadPage() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Convert Your Design to HTML Email</h2>
           <p className="text-gray-600 mb-6">
-            Upload your design file and our AI will convert it into a responsive HTML email
+            Upload your PDF design file and our AI will convert it into a responsive HTML email
             optimized for Salesforce Marketing Cloud.
           </p>
           

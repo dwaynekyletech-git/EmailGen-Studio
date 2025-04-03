@@ -379,7 +379,7 @@ export default function EditorPage() {
               {!isPreviewFullscreen && (
                 <div className={`border rounded-lg overflow-hidden ${isEditorFullscreen ? 'col-span-full' : ''}`}>
                   <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
-                    <h2 className="font-medium">HTML Editor</h2>
+            <h2 className="font-medium">HTML Editor</h2>
                     <button
                       onClick={toggleEditorFullscreen}
                       className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -395,44 +395,44 @@ export default function EditorPage() {
                         </svg>
                       )}
                     </button>
-                  </div>
-                  <CodeMirror
-                    value={code}
+          </div>
+          <CodeMirror
+            value={code}
                     height={isEditorFullscreen ? "calc(100vh - 200px)" : "500px"}
                     extensions={[html(), EditorView.lineWrapping]}
-                    onChange={handleCodeChange}
+            onChange={handleCodeChange}
                     theme={isDarkMode ? oneDark : undefined}
-                    className="text-sm"
-                  />
-                </div>
+            className="text-sm"
+          />
+        </div>
               )}
-              
+        
               {/* Show preview if not in editor fullscreen mode */}
               {!isEditorFullscreen && (
                 <div className={`border rounded-lg overflow-hidden ${isPreviewFullscreen ? 'col-span-full' : ''}`}>
-                  <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
-                    <h2 className="font-medium">Preview</h2>
-                    <div className="flex items-center space-x-2">
-                      <button
+          <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 border-b flex justify-between items-center">
+            <h2 className="font-medium">Preview</h2>
+            <div className="flex items-center space-x-2">
+              <button
                         onClick={() => setIsMobileView(false)}
                         className={`px-2 py-1 text-xs rounded ${
                           !isMobileView 
                             ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
                             : "bg-zinc-200 dark:bg-zinc-700"
                         }`}
-                      >
-                        Desktop
-                      </button>
-                      <button
+              >
+                Desktop
+              </button>
+              <button
                         onClick={() => setIsMobileView(true)}
                         className={`px-2 py-1 text-xs rounded ${
                           isMobileView 
                             ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
                             : "bg-zinc-200 dark:bg-zinc-700"
                         }`}
-                      >
-                        Mobile
-                      </button>
+              >
+                Mobile
+              </button>
                       <button
                         onClick={togglePreviewFullscreen}
                         className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 ml-2"
@@ -448,8 +448,8 @@ export default function EditorPage() {
                           </svg>
                         )}
                       </button>
-                    </div>
-                  </div>
+            </div>
+          </div>
                   <div 
                     className="bg-white flex justify-center transition-all duration-300 ease-in-out"
                     style={{ 
@@ -472,7 +472,7 @@ export default function EditorPage() {
                           : "0 1px 3px rgba(0,0,0,0.05)"
                       }}
                     >
-                      <iframe
+            <iframe
                         srcDoc={isMobileView ? 
                           code.replace(
                             '</head>',
@@ -533,33 +533,33 @@ export default function EditorPage() {
                             </head>`
                           )
                         }
-                        title="Email Preview"
-                        className="w-full h-full border-0"
+              title="Email Preview"
+              className="w-full h-full border-0"
                         sandbox="allow-same-origin allow-scripts allow-popups allow-top-navigation"
                         style={{
                           width: "100%",
                           height: "100%"
                         }}
-                      />
-                    </div>
-                  </div>
+            />
+          </div>
+        </div>
+      </div>
+              )}
+              </div>
+              
+            {/* Error and Success Messages */}
+              {saveError && (
+              <div className="p-3 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
+                  {saveError}
                 </div>
               )}
-            </div>
-
-            {/* Error and Success Messages */}
-            {saveError && (
-              <div className="p-3 bg-red-100 text-red-700 rounded-md dark:bg-red-900/30 dark:text-red-400">
-                {saveError}
-              </div>
-            )}
-            
-            {saveSuccess && (
+              
+              {saveSuccess && (
               <div className="p-3 bg-green-100 text-green-700 rounded-md dark:bg-green-900/30 dark:text-green-400">
-                Draft saved successfully!
-              </div>
-            )}
-
+                  Draft saved successfully!
+                </div>
+              )}
+      
             {/* Show Code Assistant toggle button */}
             <div className="flex justify-center">
               <button
@@ -578,18 +578,18 @@ export default function EditorPage() {
                 </svg>
               </button>
             </div>
-
+            
             {/* Show Code Assistant when visible, regardless of fullscreen states */}
             {isCodeAssistantVisible && (
               <div className="border rounded-lg overflow-hidden">
-                <CodeAssistant 
-                  code={code} 
-                  onChange={handleCodeChange}
-                  isDarkMode={isDarkMode}
-                />
-              </div>
+              <CodeAssistant 
+                code={code} 
+                onChange={handleCodeChange}
+                isDarkMode={isDarkMode}
+              />
+            </div>
             )}
-          </div>
+      </div>
           
           {/* Command Palette (Modal) */}
           <CommandPalette
