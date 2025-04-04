@@ -1,0 +1,16 @@
+.eslintrc*
+.prettierrc*
+.git
+.github
+.vscode
+node_modules
+README.md
+CHANGELOG.md
+jest.config.js
+__tests__
+test
+tests
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx 
