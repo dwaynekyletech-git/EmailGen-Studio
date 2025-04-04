@@ -5,6 +5,7 @@ interface CodeAssistantProps {
   code: string;
   onChange?: (newCode: string) => void;
   isDarkMode?: boolean;
+  editorRef?: { current: { editor: any } };
 }
 
 // Types for chat messages
@@ -15,6 +16,26 @@ interface Message {
   role: MessageRole;
   content: string;
   timestamp: Date;
+  changeDetails?: {
+    modificationId: string;
+    description: string;
+    originalCode: string;
+    newCode: string;
+    startLine: number;
+    endLine: number;
+    startCol?: number;
+    endCol?: number;
+  };
+  revertedChangeDetails?: {
+    modificationId: string;
+    description: string;
+    originalCode: string;
+    newCode: string;
+    startLine: number;
+    endLine: number;
+    startCol?: number;
+    endCol?: number;
+  };
 }
 
 // Types for code suggestions
@@ -25,6 +46,18 @@ interface CodeSuggestion {
   code?: string;
   lineNumber?: number;
   type: 'improvement' | 'error' | 'warning' | 'info';
+}
+
+interface CodeModification {
+  id: string;
+  description: string;
+  originalCode: string;
+  newCode: string;
+  startLine: number;
+  endLine: number;
+  startCol?: number;
+  endCol?: number;
+  applied: boolean;
 }
 
 interface MessagePart {
@@ -38,6 +71,24 @@ const formatMessageContent = (content: string): MessagePart[] => {
   const parts: MessagePart[] = [];
   let lastIndex = 0;
   
+  // Check for example indicators in the text
+  const lowerContent = content.toLowerCase();
+  const hasExampleIndicator = (text: string): boolean => {
+    const examplePhrases = [
+      'example',
+      'for example',
+      'here\'s an example',
+      'example of',
+      'as an example',
+      'just an example',
+      'this is an example',
+      'not for direct application',
+      'for illustration'
+    ];
+    
+    return examplePhrases.some(phrase => text.toLowerCase().includes(phrase));
+  };
+  
   // Updated regex to capture the language identifier
   const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
   let match;
@@ -45,18 +96,30 @@ const formatMessageContent = (content: string): MessagePart[] => {
   while ((match = codeBlockRegex.exec(content)) !== null) {
     // Add text before code block if any
     if (match.index > lastIndex) {
+      const textBeforeBlock = content.slice(lastIndex, match.index);
       parts.push({
         type: 'text',
-        content: content.slice(lastIndex, match.index)
+        content: textBeforeBlock
+      });
+      
+      // Check if this code block is likely an example
+      const isExample = hasExampleIndicator(textBeforeBlock) || 
+                        (match.index > 50 && hasExampleIndicator(content.slice(Math.max(0, match.index - 50), match.index)));
+      
+      // Add code block with language if specified
+      parts.push({
+        type: 'code',
+        content: match[2].trim(),
+        language: isExample ? 'example' : (match[1] || undefined)
+      });
+    } else {
+      // Just add the code block
+      parts.push({
+        type: 'code',
+        content: match[2].trim(),
+        language: match[1] || undefined
       });
     }
-
-    // Add code block with language if specified
-    parts.push({
-      type: 'code',
-      content: match[2].trim(),
-      language: match[1] || undefined
-    });
 
     lastIndex = match.index + match[0].length;
   }
@@ -72,13 +135,38 @@ const formatMessageContent = (content: string): MessagePart[] => {
   return parts;
 };
 
+// Helper function to detect if the message appears to be asking a question
+const containsQuestion = (content: string): boolean => {
+  // Check for question marks
+  if (content.includes('?')) return true;
+  
+  // Check for common question phrases
+  const questionPhrases = [
+    'could you',
+    'can you',
+    'would you',
+    'please clarify',
+    'please provide',
+    'please explain',
+    'can I ask',
+    'tell me',
+    'I need to know',
+    'I need more information',
+    'I need clarification'
+  ];
+  
+  const lowerContent = content.toLowerCase();
+  return questionPhrases.some(phrase => lowerContent.includes(phrase));
+};
+
 interface CodeBlockProps {
   code: string;
   language?: string;
   onChange?: (newCode: string) => void;
+  isExample?: boolean; // Flag to identify example code that shouldn't be applied
 }
 
-const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange }) => {
+const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange, isExample = false }) => {
   const [copied, setCopied] = useState(false);
   const [applied, setApplied] = useState(false);
 
@@ -101,9 +189,14 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange }) => {
   };
 
   return (
-    <div className="relative group rounded-md bg-zinc-50 dark:bg-zinc-900 p-4 my-2">
-      <pre className="overflow-x-auto">
-        <code className={language ? `language-${language}` : ''}>
+    <div className={`relative group rounded-md ${isExample ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-zinc-50 dark:bg-zinc-900'} p-4 my-2`}>
+      {isExample && (
+        <div className="text-xs text-amber-600 dark:text-amber-400 mb-2 font-medium">
+          Example Code (Not for direct application)
+        </div>
+      )}
+      <pre className="w-full overflow-x-auto whitespace-pre-wrap">
+        <code className={`block max-w-full ${language ? `language-${language}` : ''}`}>
           {code}
         </code>
       </pre>
@@ -123,7 +216,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange }) => {
             </svg>
           )}
         </button>
-        {onChange && (
+        {onChange && !isExample && (
           <button
             onClick={applyCode}
             className="p-2 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -148,7 +241,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, onChange }) => {
 const CodeAssistant: React.FC<CodeAssistantProps> = ({ 
   code, 
   onChange,
-  isDarkMode = false 
+  isDarkMode = false,
+  editorRef
 }) => {
   const [showChat, setShowChat] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -160,9 +254,8 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     }
   ]);
   const [newMessage, setNewMessage] = useState('');
-  const [suggestions, setSuggestions] = useState<CodeSuggestion[]>([]);
+  const [modifications, setModifications] = useState<CodeModification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [analyzingCode, setAnalyzingCode] = useState(false);
   const [activeTool, setActiveTool] = useState<'chat' | 'suggestions'>('chat');
   const messagesEndRef = { current: null as HTMLDivElement | null };
   const codeRef = { current: code };
@@ -187,19 +280,23 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     codeRef.current = code;
   }, [code]);
 
-  // Analyze code function - now only called when user clicks on Suggestions
-  const analyzeCode = async () => {
-    if (!code || analyzingCode) return;
+  // Function to analyze code and make specific changes
+  const analyzeCodeAndMakeChanges = async (userRequest: string) => {
+    if (!code) return;
     
-    setAnalyzingCode(true);
+    setLoading(true);
     
     try {
-      const response = await fetch('/api/code-assistant/analyze', {
+      // Call the API endpoint with the current code and user request
+      const response = await fetch('/api/code-assistant/analyze-and-modify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ 
+          code,
+          request: userRequest
+        }),
       });
       
       if (!response.ok) {
@@ -208,23 +305,120 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
       
       const data = await response.json();
       
-      if (data.suggestions && Array.isArray(data.suggestions)) {
-        setSuggestions(data.suggestions);
+      if (data.modifications && Array.isArray(data.modifications)) {
+        // Update the modifications state with unique IDs
+        setModifications(data.modifications.map((mod: any) => ({
+          ...mod,
+          id: uuidv4(),
+          applied: false
+        })));
+        
+        // Add assistant message to chat explaining the changes
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: data.response || "I've analyzed your code and found areas to modify. Would you like me to apply these changes?",
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        // If no modifications, just respond with the analysis
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: data.response || "I've analyzed your code but couldn't determine specific changes to make. Could you be more specific about what you'd like to modify?",
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, assistantMessage]);
       }
     } catch (error) {
-      console.error('Failed to analyze code:', error);
+      console.error('Failed to analyze and modify code:', error);
+      
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: uuidv4(),
+        role: 'error',
+        content: 'Sorry, I encountered an error analyzing your code. Please try again.',
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setAnalyzingCode(false);
+      setLoading(false);
     }
   };
 
-  // Handle clicking on the Suggestions button
-  const handleSuggestionsClick = () => {
-    setActiveTool('suggestions');
-    // Only analyze code if we haven't already and aren't currently analyzing
-    if (suggestions.length === 0 && !analyzingCode) {
-      analyzeCode();
+  // Apply a specific modification to the code
+  const applyModification = (modificationId: string) => {
+    const mod = modifications.find(m => m.id === modificationId);
+    if (!mod || !onChange) return;
+    
+    // Get the current code lines
+    const currentLines = codeRef.current.split('\n');
+    
+    // Make the modification
+    const updatedLines = [...currentLines];
+    
+    // Replace the content between start and end lines
+    const oldContent = updatedLines.slice(mod.startLine - 1, mod.endLine).join('\n');
+    
+    // If the modification has column info, use that for more precise replacement
+    if (mod.startCol !== undefined && mod.endCol !== undefined && mod.startLine === mod.endLine) {
+      // This is a single line modification with column info
+      const line = updatedLines[mod.startLine - 1];
+      const newLine = line.substring(0, mod.startCol) + mod.newCode + line.substring(mod.endCol);
+      updatedLines[mod.startLine - 1] = newLine;
+    } else {
+      // Replace whole lines
+      updatedLines.splice(mod.startLine - 1, mod.endLine - mod.startLine + 1, ...mod.newCode.split('\n'));
     }
+    
+    // Join the lines back together and update the code
+    const newCode = updatedLines.join('\n');
+    onChange(newCode);
+    
+    // Mark this modification as applied
+    setModifications(mods => 
+      mods.map(m => m.id === modificationId ? { ...m, applied: true } : m)
+    );
+    
+    // Add a message to the chat about the applied change
+    const assistantMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: `I've applied the change: ${mod.description}`,
+      timestamp: new Date(),
+      changeDetails: {
+        modificationId: modificationId,
+        description: mod.description,
+        originalCode: mod.originalCode,
+        newCode: mod.newCode,
+        startLine: mod.startLine,
+        endLine: mod.endLine,
+        startCol: mod.startCol,
+        endCol: mod.endCol
+      }
+    };
+    
+    setMessages(prev => [...prev, assistantMessage]);
+  };
+
+  // Reject a modification
+  const rejectModification = (modificationId: string) => {
+    // Remove the modification from the list
+    setModifications(mods => mods.filter(m => m.id !== modificationId));
+    
+    // Add a message to the chat about rejecting the change
+    const assistantMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: "I've discarded that change. Is there anything else you'd like me to help with?",
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => [...prev, assistantMessage]);
   };
 
   // Handle sending a new message
@@ -240,207 +434,459 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     };
     
     setMessages(prev => [...prev, userMessage]);
+    
+    const userRequest = newMessage.trim();
     setNewMessage('');
     setLoading(true);
     
-    try {
-      // Call the chat API endpoint
-      const apiMessages = messages
-        .filter(m => m.role !== 'system' && m.role !== 'error')
-        .map(m => ({
-          id: m.id,
-          role: m.role,
-          content: m.content
-        }));
-      
-      // Add the new user message
-      apiMessages.push({
-        id: userMessage.id,
-        role: userMessage.role,
-        content: userMessage.content
-      });
-      
-      const response = await fetch('/api/code-assistant/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: apiMessages,
-          code: codeRef.current, // Use the current code value from ref
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Add assistant message to chat
+    // Check if the message is asking to change the code
+    const changeCodeRegex = /change|modify|update|replace|add|remove|delete|fix|implement|create|generate|edit|adjust|insert|set|convert|transform/i;
+    
+    // Also check for assistant responses suggesting changes
+    const responseHasChangeIntent = messages.length > 0 && 
+                                   messages[messages.length - 1].role === 'assistant' &&
+                                   (messages[messages.length - 1].content.includes("Would you like me to make this change") ||
+                                    messages[messages.length - 1].content.includes("I can modify the code") ||
+                                    messages[messages.length - 1].content.includes("I can implement this")) &&
+                                   /yes|yeah|sure|okay|ok|please|go ahead/i.test(userRequest);
+    
+    if (changeCodeRegex.test(userRequest) || responseHasChangeIntent) {
+      // This looks like a code modification request
+      await analyzeCodeAndMakeChanges(userRequest);
+    } else {
+      // Proceed with regular chat
+      try {
+        // Call the chat API endpoint
+        const apiMessages = messages
+          .filter(m => m.role !== 'system' && m.role !== 'error')
+          .map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content
+          }));
+        
+        // Add the new user message
+        apiMessages.push({
+          id: userMessage.id,
+          role: userMessage.role,
+          content: userMessage.content
+        });
+        
+        const response = await fetch('/api/code-assistant/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: apiMessages,
+            code: codeRef.current, // Use the current code value from ref
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Add assistant message to chat
         const assistantMessage: Message = {
-        id: uuidv4(),
+          id: uuidv4(),
           role: 'assistant',
-        content: data.text,
+          content: data.text,
           timestamp: new Date()
         };
         
         setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      
-      // Add error message to chat
-      const errorMessage: Message = {
-        id: uuidv4(),
-        role: 'error',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Apply a suggestion to the code
-  const applySuggestion = (suggestion: CodeSuggestion) => {
-    if (suggestion.code && onChange) {
-      // Get the current code lines
-      const currentLines = codeRef.current.split('\n');
-      
-      if (suggestion.lineNumber && suggestion.lineNumber > 0) {
-        // If we have a specific line number, we'll try to intelligently modify that section
-        const lineIndex = suggestion.lineNumber - 1;
+      } catch (error) {
+        console.error('Error sending message:', error);
         
-        // Check if this is a tag replacement or addition
-        if (suggestion.type === 'error' || suggestion.type === 'warning') {
-          // For errors/warnings, we might be replacing problematic code
-          // Look for matching opening/closing tags or similar patterns
-          const targetLine = currentLines[lineIndex];
-          const tagMatch = targetLine.match(/<(\w+)[^>]*>/);
-          
-          if (tagMatch) {
-            // If we found a tag, look for its closing tag
-            const openTag = tagMatch[1];
-            const closeTagRegex = new RegExp(`</\s*${openTag}\s*>`);
-            let endLineIndex = lineIndex;
-            
-            // Look for the closing tag in subsequent lines
-            for (let i = lineIndex + 1; i < currentLines.length; i++) {
-              if (closeTagRegex.test(currentLines[i])) {
-                endLineIndex = i;
-                break;
-              }
-            }
-            
-            // Replace the entire section with the new code
-            currentLines.splice(lineIndex, endLineIndex - lineIndex + 1, ...suggestion.code.split('\n'));
-          } else {
-            // If no tag found, just replace the single line
-            currentLines[lineIndex] = suggestion.code;
-          }
-        } else {
-          // For improvements or info, insert the code at the specified line
-          currentLines.splice(lineIndex, 0, ...suggestion.code.split('\n'));
-        }
-      } else {
-        // If no line number specified, try to find the appropriate section to modify
-        const suggestionLines = suggestion.code.split('\n');
-        const firstSuggestionLine = suggestionLines[0].trim();
+        // Add error message to chat
+        const errorMessage: Message = {
+          id: uuidv4(),
+          role: 'error',
+          content: 'Sorry, I encountered an error processing your request. Please try again.',
+          timestamp: new Date()
+        };
         
-        // Try to find a matching section in the code
-        let insertIndex = -1;
-        
-        if (firstSuggestionLine.startsWith('<!DOCTYPE')) {
-          // DOCTYPE should always be at the start
-          insertIndex = 0;
-        } else if (firstSuggestionLine.startsWith('<meta')) {
-          // Meta tags go in the head
-          const headStartIndex = currentLines.findIndex(line => line.includes('<head'));
-          if (headStartIndex !== -1) {
-            insertIndex = headStartIndex + 1;
-          }
-        } else if (firstSuggestionLine.startsWith('<style')) {
-          // Style tags typically go at the end of head
-          const headEndIndex = currentLines.findIndex(line => line.includes('</head'));
-          if (headEndIndex !== -1) {
-            insertIndex = headEndIndex;
-          }
-        } else if (firstSuggestionLine.startsWith('<body') || firstSuggestionLine.includes('</body>')) {
-          // Body tag modifications
-          const bodyIndex = currentLines.findIndex(line => line.includes('<body'));
-          if (bodyIndex !== -1) {
-            insertIndex = bodyIndex;
-          }
-        }
-        
-        if (insertIndex !== -1) {
-          // Insert or replace at the found position
-          currentLines.splice(insertIndex, 0, ...suggestionLines);
-        } else {
-          // If we couldn't find a good spot, append to the end of the body
-          const bodyEndIndex = currentLines.findIndex(line => line.includes('</body>'));
-          if (bodyEndIndex !== -1) {
-            currentLines.splice(bodyEndIndex, 0, ...suggestionLines);
-          } else {
-            // If no body tag found, just append to the end
-            currentLines.push(...suggestionLines);
-          }
-        }
+        setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setLoading(false);
       }
-      
-      // Join the lines back together and update the code
-      const newCode = currentLines.join('\n');
-      onChange(newCode);
-      
-      // Remove the suggestion from the list
-      setSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
-      
-      // Add a message to the chat about the applied suggestion
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: `I've applied the suggestion: ${suggestion.title}`,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, assistantMessage]);
     }
   };
 
   // Render message based on its role
-  const renderMessage = (message: Message) => {
+  const MessageComponent: React.FC<{
+    message: Message;
+    onChange?: (newCode: string) => void;
+    modifications: CodeModification[];
+    codeRef: { current: string };
+    setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
+  }> = ({ message, onChange, modifications, codeRef, setMessages }) => {
     const parts = formatMessageContent(message.content);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const hasChangeDetails = message.changeDetails !== undefined;
+    const hasRevertedChangeDetails = message.revertedChangeDetails !== undefined;
+    const isAskingQuestion = message.role === 'assistant' && containsQuestion(message.content);
+    
+    const toggleExpand = () => {
+      if (hasChangeDetails || hasRevertedChangeDetails) {
+        setIsExpanded(!isExpanded);
+      }
+    };
+    
+    const reapplyChange = (e: any) => {
+      e.stopPropagation(); // Prevent the toggle from happening
+      if (!message.revertedChangeDetails || !onChange) {
+        console.error("Missing required data to reapply:", { 
+          hasRevertedChangeDetails: !!message.revertedChangeDetails, 
+          hasOnChange: !!onChange 
+        });
+        return;
+      }
+      
+      if (!codeRef.current) {
+        console.error("Current code reference is empty");
+        return;
+      }
+      
+      try {
+        // Get the current code lines
+        const currentCode = codeRef.current;
+        const startLine = message.revertedChangeDetails.startLine - 1; // Convert to 0-based index
+        
+        // Get the lines of code
+        const lines = currentCode.split('\n');
+        
+        // Calculate how many lines the original code takes up
+        const originalLinesCount = message.revertedChangeDetails.originalCode.split('\n').length;
+        
+        // Create a new array of lines with the new code replacing the original
+        const newLines = [
+          ...lines.slice(0, startLine),                   // Lines before the change
+          ...message.revertedChangeDetails.newCode.split('\n'), // The new code to reapply
+          ...lines.slice(startLine + originalLinesCount)  // Lines after the change
+        ];
+        
+        // Join the lines back into a single string
+        const reappliedCode = newLines.join('\n');
+        
+        // Apply the change to the editor
+        onChange(reappliedCode);
+        console.log("Reapplied change successfully");
+        
+        // Create the reapply message
+        const reapplyMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: `I've reapplied the change: ${message.revertedChangeDetails.description}`,
+          timestamp: new Date(),
+          changeDetails: {
+            modificationId: message.revertedChangeDetails.modificationId,
+            description: message.revertedChangeDetails.description,
+            originalCode: message.revertedChangeDetails.originalCode,
+            newCode: message.revertedChangeDetails.newCode,
+            startLine: message.revertedChangeDetails.startLine,
+            endLine: message.revertedChangeDetails.endLine,
+            startCol: message.revertedChangeDetails.startCol,
+            endCol: message.revertedChangeDetails.endCol
+          }
+        };
+        
+        // Replace the current message with the reapply message
+        setMessages((prev: Message[]) => {
+          // Filter out this "reverted" message
+          const filteredMessages = prev.filter(m => m.id !== message.id);
+          // Add the new reapply message
+          return [...filteredMessages, reapplyMessage];
+        });
+        
+        // Close the expanded view since we're removing this message
+        setIsExpanded(false);
+      } catch (error) {
+        console.error("Error reapplying change:", error);
+        alert("Failed to reapply the change. Please check the console for details.");
+      }
+    };
+    
+    const revertChange = (e: any) => {
+      e.stopPropagation(); // Prevent the toggle from happening
+      if (!message.changeDetails || !onChange) {
+        console.error("Missing required data to revert:", { 
+          hasChangeDetails: !!message.changeDetails, 
+          hasOnChange: !!onChange 
+        });
+        return;
+      }
+      
+      if (!codeRef.current) {
+        console.error("Current code reference is empty");
+        return;
+      }
+      
+      try {
+        // We've confirmed onChange works, so now let's implement the actual revert
+        const currentCode = codeRef.current;
+        const startLine = message.changeDetails.startLine - 1; // Convert to 0-based index
+        
+        // Get the lines of code
+        const lines = currentCode.split('\n');
+        
+        // For this simple implementation, we'll replace the lines directly
+        // Calculate how many lines the modified code takes up
+        const modifiedLinesCount = message.changeDetails.newCode.split('\n').length;
+        
+        // Remove the modified lines and insert the original code lines
+        const originalLines = message.changeDetails.originalCode.split('\n');
+        
+        // Create a new array of lines with the original code replaced
+        const newLines = [
+          ...lines.slice(0, startLine),                  // Lines before the change
+          ...originalLines,                              // The original code
+          ...lines.slice(startLine + modifiedLinesCount) // Lines after the change
+        ];
+        
+        // Join the lines back into a single string
+        const revertedCode = newLines.join('\n');
+        
+        // Apply the change to the editor
+        onChange(revertedCode);
+        console.log("Reverted code applied successfully");
+        
+        // Create the revert message
+        const revertMessage: Message = {
+          id: uuidv4(),
+          role: 'assistant',
+          content: `I've reverted the change: ${message.changeDetails.description}`,
+          timestamp: new Date(),
+          revertedChangeDetails: {
+            modificationId: message.changeDetails.modificationId,
+            description: message.changeDetails.description,
+            originalCode: message.changeDetails.originalCode,
+            newCode: message.changeDetails.newCode,
+            startLine: message.changeDetails.startLine,
+            endLine: message.changeDetails.endLine,
+            startCol: message.changeDetails.startCol,
+            endCol: message.changeDetails.endCol
+          }
+        };
+        
+        // Replace the current message with the revert message
+        setMessages((prev: Message[]) => {
+          // Filter out this "applied" message (the one being reverted)
+          const filteredMessages = prev.filter(m => m.id !== message.id);
+          // Add the new revert message
+          return [...filteredMessages, revertMessage];
+        });
+        
+        // Close the expanded view since we're removing this message
+        setIsExpanded(false);
+      } catch (error) {
+        console.error("Error reverting change:", error);
+        alert("Failed to revert the change. Please check the console for details.");
+      }
+    };
     
     return (
       <div 
-        key={message.id} 
         className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'} mb-4`}
       >
         <div 
           className={`max-w-[80%] rounded-lg p-4 ${
             message.role === 'user'
               ? 'bg-blue-500 text-white'
-              : 'bg-zinc-100 dark:bg-zinc-800'
+              : hasChangeDetails 
+                ? 'bg-zinc-100 dark:bg-zinc-800 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border-l-4 border-blue-400'
+                : hasRevertedChangeDetails
+                  ? 'bg-zinc-100 dark:bg-zinc-800 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border-l-4 border-orange-400'
+                  : isAskingQuestion
+                    ? 'bg-zinc-100 dark:bg-zinc-800 border-l-4 border-purple-400'
+                    : 'bg-zinc-100 dark:bg-zinc-800'
           }`}
+          onClick={toggleExpand}
         >
+          {hasChangeDetails && !isExpanded && (
+            <div className="flex items-center text-blue-600 text-xs font-medium mb-2">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Click to view change details
+            </div>
+          )}
+          
+          {hasRevertedChangeDetails && !isExpanded && (
+            <div className="flex items-center text-orange-600 text-xs font-medium mb-2">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Click to view reverted change details
+            </div>
+          )}
+          
+          {isAskingQuestion && message.role === 'assistant' && !hasChangeDetails && !hasRevertedChangeDetails && (
+            <div className="flex items-center text-purple-600 text-xs font-medium mb-2">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Assistant is asking a question
+            </div>
+          )}
+          
           {parts.map((part, index) => {
             if (part.type === 'code') {
               return (
                 <CodeBlock
                   key={index}
                   code={part.content}
-                  language={part.language}
+                  language={part.language === 'example' ? undefined : part.language}
                   onChange={onChange}
+                  isExample={part.language === 'example'}
                 />
               );
             }
             return <span key={index}>{part.content}</span>;
           })}
+          
+          {/* Render change details if this message has them and is expanded */}
+          {hasChangeDetails && isExpanded && message.changeDetails && (
+            <div className="mt-4 border-t pt-4">
+              <div className="flex justify-between items-center mb-2">
+                <div className="text-xs font-medium text-blue-600">Change Details</div>
+                <button
+                  onClick={(e) => revertChange(e)}
+                  className="flex items-center px-2 py-1 rounded text-xs bg-orange-100 text-orange-800 hover:bg-orange-200"
+                  title="Revert this change"
+                >
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                  Revert Change
+                </button>
+              </div>
+              <div className="flex flex-col space-y-2">
+                <div className="bg-red-50 dark:bg-red-900/20 rounded p-3">
+                  <div className="text-xs text-red-800 dark:text-red-300 mb-1">
+                    Original Code (Lines {message.changeDetails.startLine}-{message.changeDetails.endLine}):
+                  </div>
+                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                    <code className="block max-w-full">
+                      {message.changeDetails.originalCode}
+                    </code>
+                  </pre>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
+                  <div className="text-xs text-green-800 dark:text-green-300 mb-1">New Code:</div>
+                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                    <code className="block max-w-full">
+                      {message.changeDetails.newCode}
+                    </code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Render reverted change details if this message has them and is expanded */}
+          {hasRevertedChangeDetails && isExpanded && message.revertedChangeDetails && (
+            <div className="mt-4 border-t pt-4">
+              <div className="flex justify-between items-center mb-2">
+                <div className="text-xs font-medium text-orange-600">Reverted Change Details</div>
+                <button
+                  onClick={(e) => reapplyChange(e)}
+                  className="flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 hover:bg-blue-200"
+                  title="Reapply this change"
+                >
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Reapply Change
+                </button>
+              </div>
+              <div className="flex flex-col space-y-2">
+                <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
+                  <div className="text-xs text-green-800 dark:text-green-300 mb-1">
+                    Original Code (Lines {message.revertedChangeDetails.startLine}-{message.revertedChangeDetails.endLine}):
+                  </div>
+                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                    <code className="block max-w-full">
+                      {message.revertedChangeDetails.originalCode}
+                    </code>
+                  </pre>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-3">
+                  <div className="text-xs text-blue-800 dark:text-blue-300 mb-1">Code That Could Be Reapplied:</div>
+                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                    <code className="block max-w-full">
+                      {message.revertedChangeDetails.newCode}
+                    </code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="text-xs text-zinc-500 mt-1 px-1">
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+    );
+  };
+
+  // Render a code modification with accept/reject options
+  const renderModification = (mod: CodeModification) => {
+    return (
+      <div key={mod.id} className="border-l-4 border-blue-500 pl-2 my-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-medium text-blue-600 flex items-center">
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            {mod.applied ? 'Applied Change' : 'Suggested Change'}
+          </div>
+          {!mod.applied && (
+            <div className="flex space-x-2">
+              <button
+                onClick={() => applyModification(mod.id)}
+                className="flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800 hover:bg-green-200"
+                title="Apply this change"
+              >
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Apply
+              </button>
+              <button
+                onClick={() => rejectModification(mod.id)}
+                className="flex items-center px-2 py-1 rounded text-xs bg-red-100 text-red-800 hover:bg-red-200"
+                title="Reject this change"
+              >
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reject
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="text-sm mb-2">{mod.description}</div>
+        <div className="flex flex-col space-y-2">
+          <div className="bg-red-50 dark:bg-red-900/20 rounded p-3">
+            <div className="text-xs text-red-800 dark:text-red-300 mb-1">Original Code (Lines {mod.startLine}-{mod.endLine}):</div>
+            <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+              <code className="block max-w-full">
+                {mod.originalCode}
+              </code>
+            </pre>
+          </div>
+          <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
+            <div className="text-xs text-green-800 dark:text-green-300 mb-1">New Code:</div>
+            <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+              <code className="block max-w-full">
+                {mod.newCode}
+              </code>
+            </pre>
+          </div>
         </div>
       </div>
     );
@@ -461,173 +907,58 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
           >
             Chat
           </button>
-          <button
-            onClick={handleSuggestionsClick}
-            className={`px-2 py-1 text-xs rounded ${
-              activeTool === 'suggestions' 
-                ? "bg-zinc-300 dark:bg-zinc-600 font-medium" 
-                : "bg-zinc-200 dark:bg-zinc-700"
-            }`}
-          >
-            Suggestions {suggestions.length > 0 && `(${suggestions.length})`}
-          </button>
         </div>
       </div>
       
       <div className="h-[400px] flex flex-col">
-        {activeTool === 'chat' ? (
-          <>
-            <div className="flex-grow overflow-y-auto p-4">
-              {messages.map(message => renderMessage(message))}
-              <div ref={messagesEndRef} />
+        <div className="flex-grow overflow-y-auto p-4">
+          {messages.map(message => (
+            <MessageComponent
+              key={message.id}
+              message={message}
+              onChange={onChange}
+              modifications={modifications}
+              codeRef={codeRef}
+              setMessages={setMessages}
+            />
+          ))}
+          
+          {/* Render any pending modifications */}
+          {modifications.filter(mod => !mod.applied).length > 0 && (
+            <div className="my-4">
+              <div className="text-sm font-medium mb-2">Suggested Code Changes:</div>
+              {modifications.filter(mod => !mod.applied).map(renderModification)}
             </div>
-            
-            <div className="p-2 border-t">
-              <div className="flex items-center">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Ask for help or suggestions..."
-                  className="flex-grow px-3 py-2 border rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
-                  disabled={loading}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={loading || !newMessage.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : 'Send'}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-grow overflow-y-auto p-4">
-            {suggestions.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex justify-end mb-2">
-                  <button 
-                    onClick={analyzeCode}
-                    disabled={analyzingCode}
-                    className="flex items-center px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600"
-                  >
-                    {analyzingCode ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Refresh Suggestions
-                      </>
-                    )}
-                  </button>
-                </div>
-                {suggestions.map(suggestion => (
-                  <div 
-                    key={suggestion.id} 
-                    className="border p-3 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                  >
-                    <div className="flex items-start">
-                      <div 
-                        className={`mr-3 p-1 rounded-full ${
-                          suggestion.type === 'error' 
-                            ? 'bg-red-100 text-red-600' 
-                            : suggestion.type === 'warning' 
-                              ? 'bg-yellow-100 text-yellow-600' 
-                              : suggestion.type === 'improvement' 
-                                ? 'bg-green-100 text-green-600' 
-                                : 'bg-blue-100 text-blue-600'
-                        }`}
-                      >
-                        {suggestion.type === 'error' && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                        {suggestion.type === 'warning' && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                        {suggestion.type === 'improvement' && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        )}
-                        {suggestion.type === 'info' && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-grow">
-                        <h3 className="font-medium text-sm">{suggestion.title}</h3>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">{suggestion.description}</p>
-                        {suggestion.code && (
-                          <pre className="mt-2 text-xs bg-zinc-100 dark:bg-zinc-900 p-2 rounded overflow-x-auto">
-                            <code>{suggestion.code}</code>
-                          </pre>
-                        )}
-                        {suggestion.lineNumber && (
-                          <p className="text-xs text-zinc-500 mt-1">Line: {suggestion.lineNumber}</p>
-                        )}
-                      </div>
-                    </div>
-                    {suggestion.code && onChange && (
-                      <button 
-                        onClick={() => applySuggestion(suggestion)}
-                        className="mt-2 px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600 float-right"
-                      >
-                        Apply
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                {analyzingCode ? (
-                  <>
-                    <svg className="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <p className="text-zinc-600 dark:text-zinc-400">Analyzing your code...</p>
-                  </>
-                ) : (
-                  <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          )}
+          
+          <div ref={messagesEndRef} />
+        </div>
+        
+        <div className="p-2 border-t">
+          <div className="flex items-center">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Ask for help or suggest changes..."
+              className="flex-grow px-3 py-2 border rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+              disabled={loading}
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={loading || !newMessage.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                    <p className="mt-2 text-zinc-600 dark:text-zinc-400">No suggestions available</p>
-                    <p className="text-xs text-zinc-500 mb-4">Click the button below to analyze your code for potential improvements.</p>
-                    <button 
-                      onClick={analyzeCode}
-                      disabled={analyzingCode}
-                      className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {analyzingCode ? 'Analyzing...' : 'Analyze Code'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+              ) : 'Send'}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -35,6 +35,32 @@ export async function POST(req: NextRequest) {
       \`\`\`
       Refer to this code when relevant to the user's questions.` : ''}
       
+      IMPORTANT INSTRUCTIONS FOR ANSWERING:
+      1. Before providing a final answer, determine if you need additional information from the user
+      2. If you need clarification, ask 1-2 specific follow-up questions to better understand their needs
+      3. Don't list multiple possible approaches - focus on providing a single, best answer
+      4. Be direct and concise - avoid unnecessary explanations when a straightforward answer will suffice
+      5. For complex requests, prioritize the most relevant information rather than covering every edge case
+      
+      EMAIL CODING STRATEGY:
+      When suggesting or implementing code changes, follow these best practices:
+      1. Use table-based layouts for maximum email client compatibility
+      2. Always use inline CSS styles instead of style blocks or external CSS
+      3. Set exact pixel values for spacing, margins, and padding to ensure precise positioning
+      4. Use media queries to implement responsive design, hiding desktop elements and showing mobile ones
+      5. Set MSO conditional comments for Outlook compatibility when needed
+      6. Add proper HTML comments to clearly identify different sections of the email
+      7. Maintain precise line spacing, padding, and margins between elements
+      8. Ensure all elements maintain their relative positions at various screen sizes
+      9. Include proper meta tags for responsiveness
+      
+      CODE CHANGE INSTRUCTIONS:
+      1. NEVER provide code block snippets for the user to copy and apply manually
+      2. When suggesting code changes, ALWAYS RESPOND with something like: "I can modify the code to implement this. Would you like me to make this change for you?"
+      3. This will trigger the analyze-and-modify endpoint which will properly format the changes
+      4. The system will then show Apply/Reject buttons for the user, rather than code blocks they need to copy manually
+      5. For explanatory code examples that aren't meant to be directly applied, clearly state that these are just examples
+      
       Keep your responses professional, helpful, and tailored to email development.
       
       When providing code examples or snippets:
@@ -63,7 +89,7 @@ export async function POST(req: NextRequest) {
     const { text, reasoning } = await generateText({
       model: anthropic('claude-3-7-sonnet-20250219'),
       messages: allMessages,
-      temperature: 0.7,
+      temperature: 0.3,
       maxTokens: 1500,
     });
 

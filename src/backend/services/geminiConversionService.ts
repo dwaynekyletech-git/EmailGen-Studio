@@ -216,6 +216,14 @@ IMPORTANT: You MUST implement the EXACT design shown in the PDF, including:
 - The precise fonts, colors, and spacing shown
 - The exact layout structure for both desktop and mobile designs
 
+PAY SPECIAL ATTENTION TO:
+- Line spacing between paragraphs and elements (maintain exact spacing from design)
+- Padding and margins between elements (replicate exactly as shown)
+- Vertical positioning of all elements (maintain relative positions)
+- Position of elements relative to each other (maintain exact alignment)
+- Whitespace distribution throughout the email (preserve empty space as shown)
+- Text alignment and justification (match exactly as shown)
+
 DO NOT use placeholders like "desktop content" or "mobile content". 
 IMPLEMENT THE FULL HTML for the ACTUAL DESIGN shown in the PDF.
 
@@ -234,6 +242,14 @@ The HTML should:
 4. Ensure font sizes, spacing, and layouts match both designs precisely
 5. Follow accessibility best practices
 6. Include commented sections to clearly identify desktop vs. mobile-specific code
+7. Use exact pixel values for spacing, margins, and line-heights to ensure precise positioning
+
+SPACING AND POSITIONING TECHNIQUE:
+- For vertical spacing between elements, use precise pixel values in margins or padding
+- For text line spacing, use line-height with exact pixel values (not relative values)
+- For positioning elements, use tables with fixed widths and heights where necessary
+- For maintaining whitespace, use transparent spacer elements with fixed dimensions when needed
+- For text blocks, set precise margins to maintain exact spacing between paragraphs
 
 Again, it is CRITICAL that you do not use placeholders - implement the actual design content exactly as shown in the PDF.
 

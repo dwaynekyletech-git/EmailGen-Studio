@@ -53,6 +53,8 @@ export default function EditorPage() {
   const isDarkMode = theme === 'dark';
   const [isLoading, setIsLoading] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  // Reference to store the CodeMirror editor instance
+  const editorRef = { current: { editor: null as any } };
 
   // Add keyboard event listener within the useEffect
   useEffect(() => {
@@ -403,6 +405,9 @@ export default function EditorPage() {
             onChange={handleCodeChange}
                     theme={isDarkMode ? oneDark : undefined}
             className="text-sm"
+            onCreateEditor={(editor: any) => {
+              editorRef.current.editor = editor;
+            }}
           />
         </div>
               )}
@@ -582,12 +587,13 @@ export default function EditorPage() {
             {/* Show Code Assistant when visible, regardless of fullscreen states */}
             {isCodeAssistantVisible && (
               <div className="border rounded-lg overflow-hidden">
-              <CodeAssistant 
-                code={code} 
-                onChange={handleCodeChange}
-                isDarkMode={isDarkMode}
-              />
-            </div>
+                <CodeAssistant 
+                  code={code} 
+                  onChange={handleCodeChange}
+                  isDarkMode={isDarkMode}
+                  editorRef={editorRef}
+                />
+              </div>
             )}
       </div>
           

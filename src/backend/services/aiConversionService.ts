@@ -109,6 +109,24 @@ The HTML should:
 3. Use inline CSS for maximum email client compatibility
 4. Follow accessibility best practices
 5. Include comments explaining the structure
+6. Pay special attention to precise spacing and positioning between elements
+
+IMPORTANT SPACING AND POSITIONING REQUIREMENTS:
+- For all elements, maintain exact spacing as would be shown in the design
+- Use precise pixel values for margins, padding, and line-heights
+- Ensure consistent whitespace distribution throughout the email
+- Maintain proper vertical alignment of all elements
+- For text blocks, set appropriate line spacing to ensure readability
+- Use spacer elements with fixed dimensions when necessary to maintain layout
+- For vertical spacing between sections, use precise measurements
+- Ensure proper separation between paragraphs and content blocks
+
+IMPLEMENTATION TECHNIQUES:
+- Use table cells with fixed heights for spacing when needed
+- Use line-height with exact pixel values for text spacing
+- Use padding and margin with precise values
+- For maintaining whitespace, use transparent spacer elements with exact dimensions
+- Set specific heights on container elements to prevent content from collapsing
 
 Please provide only the complete HTML code without any explanations.
 `;
@@ -219,6 +237,24 @@ The HTML should:
 3. Use inline CSS for maximum email client compatibility
 4. Follow accessibility best practices
 5. Include comments explaining the structure
+6. Pay special attention to precise spacing and positioning between elements
+
+IMPORTANT SPACING AND POSITIONING REQUIREMENTS:
+- For all elements, maintain exact spacing as would be shown in the design
+- Use precise pixel values for margins, padding, and line-heights
+- Ensure consistent whitespace distribution throughout the email
+- Maintain proper vertical alignment of all elements
+- For text blocks, set appropriate line spacing to ensure readability
+- Use spacer elements with fixed dimensions when necessary to maintain layout
+- For vertical spacing between sections, use precise measurements
+- Ensure proper separation between paragraphs and content blocks
+
+IMPLEMENTATION TECHNIQUES:
+- Use table cells with fixed heights for spacing when needed
+- Use line-height with exact pixel values for text spacing
+- Use padding and margin with precise values
+- For maintaining whitespace, use transparent spacer elements with exact dimensions
+- Set specific heights on container elements to prevent content from collapsing
 
 Please provide only the complete HTML code without any explanations.
 `;
