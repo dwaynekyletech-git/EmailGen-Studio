@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { PDFDocument } from 'pdf-lib';
+// Dynamic import for pdf-lib will be used
+// import { PDFDocument } from 'pdf-lib';
 
 // Define interfaces for the service
 interface ConversionResult {
@@ -80,6 +81,9 @@ export class GeminiConversionService {
     try {
       console.log('Processing PDF to extract pages');
       const pageDataUrls: string[] = [];
+      
+      // Dynamically import PDFDocument
+      const { PDFDocument } = await import('pdf-lib');
       
       // Extract pages with pdf-lib
       const pdfDoc = await PDFDocument.load(pdfBuffer);
