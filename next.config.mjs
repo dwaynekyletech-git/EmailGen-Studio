@@ -18,7 +18,7 @@ const nextConfig = {
   // Enable compression
   compress: true,
 
-  // Custom webpack configuration to fix caching issues
+  // Custom webpack configuration to fix caching issues and transpile pdf-lib
   webpack: (config, { dev, isServer }) => {
     // Fix for "Caching failed for pack: Error: Unable to snapshot resolve dependencies"
     if (dev) {
@@ -29,9 +29,28 @@ const nextConfig = {
       };
     }
     
+    // Add pdf-lib to transpiled modules list
+    config.module.rules.push({
+      test: /\.m?js$/,
+      include: [
+        /node_modules\/pdf-lib/,
+      ],
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: [
+            ['next/babel']
+          ]
+        }
+      }
+    });
+    
     // Return modified config
     return config;
   },
+
+  // Explicitly tell Next.js to handle pdf-lib as a dependency
+  transpilePackages: ['pdf-lib'],
 };
 
 export default nextConfig;

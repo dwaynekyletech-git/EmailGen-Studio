@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node node_modules/next/dist/bin/next telemetry disable && node node_modules/next/dist/bin/next",
+    "prebuild": "node node_modules/next/dist/bin/next telemetry disable && pnpm add pdf-lib@1.17.1",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

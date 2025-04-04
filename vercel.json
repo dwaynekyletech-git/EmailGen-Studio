@@ -1,7 +1,7 @@
 {
-  "buildCommand": "pnpm add pdf-lib && pnpm build",
+  "buildCommand": "pnpm add pdf-lib@1.17.1 && pnpm build",
   "devCommand": "pnpm dev",
-  "installCommand": "pnpm install",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "nextjs",
   "outputDirectory": ".next"
 } 
