@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm add pdf-lib@1.17.1 && pnpm build",
+  "buildCommand": "pnpm add pdf-lib@1.17.1 babel-loader @babel/core @babel/preset-env -D && pnpm build",
   "devCommand": "pnpm dev",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "nextjs",
