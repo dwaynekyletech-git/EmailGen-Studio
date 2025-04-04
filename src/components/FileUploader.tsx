@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-// Import PDFDocument dynamically to handle SSR issues
-// import { PDFDocument } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 // Create a global variable to store HTML until it can be used
 if (typeof window !== 'undefined') {
@@ -65,8 +64,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const checkPdfPageCount = async (file: File): Promise<number> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      // Dynamically import PDFDocument only when needed
-      const { PDFDocument } = await import('pdf-lib');
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       return pdfDoc.getPageCount();
     } catch (error) {
