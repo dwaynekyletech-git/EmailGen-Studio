@@ -256,12 +256,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       console.log(`PDF has ${pageCount} pages`);
       setUploadProgress(30);
       
-      // Use streaming for multi-page PDFs, regular for single page
-      if (pageCount > 1) {
-        await handleStreamingConversion(file, formData);
-      } else {
-        await handleRegularConversion(file, formData);
-      }
+      // Always use streaming conversion
+      console.log(`Using streaming conversion for ${file.name} (${pageCount} pages)`);
+      await handleStreamingConversion(file, formData);
       
     } catch (error) {
       console.error('File upload error:', error);
