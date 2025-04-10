@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-// Dynamic import for pdf-lib will be used
-// import { PDFDocument } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 // Define interfaces for the service
 interface ConversionResult {
@@ -81,9 +80,6 @@ export class GeminiConversionService {
     try {
       console.log('Processing PDF to extract pages');
       const pageDataUrls: string[] = [];
-      
-      // Dynamically import PDFDocument
-      const { PDFDocument } = await import('pdf-lib');
       
       // Extract pages with pdf-lib
       const pdfDoc = await PDFDocument.load(pdfBuffer);
@@ -273,19 +269,19 @@ Please provide only the complete HTML code without any explanations.
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
         ],
       });
@@ -476,19 +472,19 @@ Please provide only the complete HTML code without any explanations.
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
           {
             category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
           },
         ],
       });
