@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 
+// Add edge runtime to avoid function timeout issues in Vercel
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const { code, request } = await req.json();
@@ -94,6 +97,8 @@ Make sure your modifications are correct, precise, and fully implement the user'
       prompt,
       maxTokens: 2000,
       temperature: 0.3,
+      // Note: Vercel edge runtime should help avoid 504 timeout errors
+      // that occur with the default serverless functions
     });
 
     // Parse the response
