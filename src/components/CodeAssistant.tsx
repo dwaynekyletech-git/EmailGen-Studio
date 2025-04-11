@@ -25,6 +25,7 @@ interface Message {
     endLine: number;
     startCol?: number;
     endCol?: number;
+    contextValidation?: string;
   };
   revertedChangeDetails?: {
     modificationId: string;
@@ -35,6 +36,7 @@ interface Message {
     endLine: number;
     startCol?: number;
     endCol?: number;
+    contextValidation?: string;
   };
 }
 
@@ -57,6 +59,7 @@ interface CodeModification {
   endLine: number;
   startCol?: number;
   endCol?: number;
+  contextValidation?: string;
   applied: boolean;
 }
 
@@ -355,28 +358,82 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     const mod = modifications.find(m => m.id === modificationId);
     if (!mod || !onChange) return;
     
+    // Log what we're doing for debugging
+    console.log('APPLY - ORIGINAL CODE:', mod.originalCode);
+    console.log('APPLY - NEW CODE:', mod.newCode);
+    
+    // Extract the original and new code lines
+    const originalLines = mod.originalCode.split('\n');
+    const newLines = mod.newCode.split('\n');
+    
     // Get the current code lines
     const currentLines = codeRef.current.split('\n');
     
-    // Make the modification
-    const updatedLines = [...currentLines];
+    // Create a map of trimmed original lines for faster lookups
+    const originalLineMap = new Map();
+    originalLines.forEach((line, index) => {
+      originalLineMap.set(line.trim(), index);
+    });
     
-    // Replace the content between start and end lines
-    const oldContent = updatedLines.slice(mod.startLine - 1, mod.endLine).join('\n');
+    // Find only the new lines (those that don't exist in original code)
+    const trulyNewLines = newLines.filter(line => !originalLineMap.has(line.trim()));
     
-    // If the modification has column info, use that for more precise replacement
+    // Check if this is a single line change with column info
     if (mod.startCol !== undefined && mod.endCol !== undefined && mod.startLine === mod.endLine) {
-      // This is a single line modification with column info
-      const line = updatedLines[mod.startLine - 1];
-      const newLine = line.substring(0, mod.startCol) + mod.newCode + line.substring(mod.endCol);
-      updatedLines[mod.startLine - 1] = newLine;
+      // Handle single line modifications - typically more targeted changes to a specific part of a line
+      const lineIndex = mod.startLine - 1;
+      
+      // Get the current line from the editor
+      const currentLine = currentLines[lineIndex]; 
+      
+      // If the original line in the mod matches (approximately) the current line in the editor
+      // Then we can apply the change directly to that line
+      // Otherwise, we'll insert the new line as is
+      if (currentLine && currentLine.trim() === originalLines[0].trim()) {
+        // For single line replacements, the new code is the whole line
+        currentLines[lineIndex] = newLines[0];
+      } else {
+        // If the current line doesn't match the expected original line,
+        // just insert the new line right after the current line
+        currentLines.splice(lineIndex + 1, 0, ...trulyNewLines);
+      }
     } else {
-      // Replace whole lines
-      updatedLines.splice(mod.startLine - 1, mod.endLine - mod.startLine + 1, ...mod.newCode.split('\n'));
+      // This is a multi-line code change
+      
+      // First, let's find the existing lines in the affected region
+      const affectedRegion = currentLines.slice(mod.startLine - 1, mod.endLine);
+      
+      // Keep track of which original lines are already present in the current code
+      const existingOriginalLines = new Set();
+      
+      for (const line of affectedRegion) {
+        if (originalLineMap.has(line.trim())) {
+          existingOriginalLines.add(line.trim());
+        }
+      }
+      
+      // Prepare combined content for the updated region
+      // Start with the original lines that should remain (red lines)
+      let updatedRegionLines = originalLines.filter(line => 
+        existingOriginalLines.has(line.trim())
+      );
+      
+      // Add the truly new lines (green lines)
+      updatedRegionLines = [...updatedRegionLines, ...trulyNewLines];
+      
+      // Replace the affected region with our new combined content
+      if (updatedRegionLines.length > 0) {
+        // Replace the existing content in the region with our new combined content
+        currentLines.splice(
+          mod.startLine - 1, 
+          mod.endLine - mod.startLine + 1, 
+          ...updatedRegionLines
+        );
+      }
     }
     
     // Join the lines back together and update the code
-    const newCode = updatedLines.join('\n');
+    const newCode = currentLines.join('\n');
     onChange(newCode);
     
     // Mark this modification as applied
@@ -388,7 +445,7 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     const assistantMessage: Message = {
       id: uuidv4(),
       role: 'assistant',
-      content: `I've applied the change: ${mod.description}`,
+      content: `I've applied the new code: ${mod.description}`,
       timestamp: new Date(),
       changeDetails: {
         modificationId: modificationId,
@@ -398,7 +455,8 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
         startLine: mod.startLine,
         endLine: mod.endLine,
         startCol: mod.startCol,
-        endCol: mod.endCol
+        endCol: mod.endCol,
+        contextValidation: mod.contextValidation
       }
     };
     
@@ -530,6 +588,100 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
     const hasRevertedChangeDetails = message.revertedChangeDetails !== undefined;
     const isAskingQuestion = message.role === 'assistant' && containsQuestion(message.content);
     
+    // Prepare a unified code view with highlighted changes for changeDetails
+    const prepareUnifiedCodeView = (originalCode: string, newCode: string) => {
+      // These are the code lines before and after the change
+      const oldCodeLines = originalCode.split('\n');
+      const newCodeLines = newCode.split('\n');
+      
+      // Create a unified view with proper highlighting
+      return newCodeLines.map((line, idx) => {
+        if (line.trim() === '') {
+          // Handle empty lines
+          return line;
+        }
+        
+        // Check if this line exists in the original code
+        // First do an exact match check
+        if (oldCodeLines.some(oldLine => oldLine === line)) {
+          return `<span class="text-red-600 dark:text-red-400">${escapeHtml(line)}</span>`;
+        }
+        
+        // If not an exact match, check for lines that are very similar (e.g. minor attribute changes)
+        for (const oldLine of oldCodeLines) {
+          // Skip empty lines
+          if (oldLine.trim() === '') continue;
+          
+          // If lines are substantially similar (e.g. same tag structure but different attributes)
+          // Check if both lines contain opening tags of the same type
+          const oldTagMatch = oldLine.match(/<([a-z0-9]+)[\s>]/i);
+          const newTagMatch = line.match(/<([a-z0-9]+)[\s>]/i);
+          
+          if (oldTagMatch && newTagMatch && oldTagMatch[1] === newTagMatch[1]) {
+            // Split the line into segments for more granular highlighting
+            // This approach allows us to highlight just the changed parts within a similar line
+            const changes = analyzeLineChanges(oldLine, line);
+            return changes;
+          }
+        }
+          
+        // If no match found, it's truly new content
+        return `<span class="text-green-600 dark:text-green-400">${escapeHtml(line)}</span>`;
+      }).join('\n');
+    };
+    
+    // Helper to analyze changes between two similar lines
+    const analyzeLineChanges = (oldLine: string, newLine: string): string => {
+      // A simple approach: Break lines into chunks and compare
+      // In a real implementation, you might want a more sophisticated diff algorithm
+      
+      // If one line is significantly longer than the other, just treat it as modified
+      if (Math.abs(oldLine.length - newLine.length) > oldLine.length * 0.5) {
+        return `<span class="text-green-600 dark:text-green-400">${escapeHtml(newLine)}</span>`;
+      }
+      
+      // A simple approach for HTML lines: split by attribute boundaries
+      const oldParts = oldLine.split(/\s+(?=[a-z\-]+=)/i);
+      const newParts = newLine.split(/\s+(?=[a-z\-]+=)/i);
+      
+      let result = '';
+      
+      // Handle the tag name part (first segment)
+      if (oldParts[0] === newParts[0]) {
+        result += `<span class="text-red-600 dark:text-red-400">${escapeHtml(newParts[0])}</span>`;
+      } else {
+        result += `<span class="text-green-600 dark:text-green-400">${escapeHtml(newParts[0])}</span>`;
+      }
+      
+      // Process the rest (attributes)
+      for (let i = 1; i < newParts.length; i++) {
+        const newPart = newParts[i];
+        
+        // Check if this attribute exists in old line
+        const exactMatch = oldParts.includes(newPart);
+        
+        if (exactMatch) {
+          // Existing attribute, unchanged
+          result += ` <span class="text-red-600 dark:text-red-400">${escapeHtml(newPart)}</span>`;
+        } else {
+          // New or modified attribute
+          result += ` <span class="text-green-600 dark:text-green-400">${escapeHtml(newPart)}</span>`;
+        }
+      }
+      
+      return result;
+    };
+    
+    // Helper to escape HTML for safe rendering
+    const escapeHtml = (str: string): string => {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+    
     const toggleExpand = () => {
       if (hasChangeDetails || hasRevertedChangeDetails) {
         setIsExpanded(!isExpanded);
@@ -552,61 +704,69 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
       }
       
       try {
-        // Get the current code lines
+        // Reapply should behave like apply: add only the new/modified ("green") lines
+        const details = message.revertedChangeDetails; // Use reverted details
+        console.log('REAPPLY (Apply Green) - ORIGINAL CODE:', details.originalCode);
+        console.log('REAPPLY (Apply Green) - NEW CODE:', details.newCode);
+
+        const originalLines = details.originalCode.split('\n');
+        const newLines = details.newCode.split('\n');
+        const originalLinesSet = new Set(originalLines.map(line => line.trim()));
+
+        // Get the current code lines from the editor
         const currentCode = codeRef.current;
-        const startLine = message.revertedChangeDetails.startLine - 1; // Convert to 0-based index
+        const currentLines = currentCode.split('\n');
+        const startLine = details.startLine;
         
-        // Get the lines of code
-        const lines = currentCode.split('\n');
+        // Find the lines from newCode that are NOT in originalCode (the "green" lines)
+        const trulyNewLines = newLines.filter(line => !originalLinesSet.has(line.trim()));
+
+        // Determine the correct insertion point. 
+        // We need to find where the original block (or what's left of it) currently starts.
+        // This is simpler if we assume the revert action only removed lines, and didn't shift context.
+        // The startLine from details should still be valid for insertion.
         
-        // Calculate how many lines the original code takes up
-        const originalLinesCount = message.revertedChangeDetails.originalCode.split('\n').length;
+        // Insert *only* the truly new lines at the original start position
+        // Note: This assumes the surrounding context hasn't drastically changed.
+        // More robust implementation might involve context searching.
+        if (trulyNewLines.length > 0) {
+             // Insert the new lines at the specified start line
+            currentLines.splice(startLine - 1, 0, ...trulyNewLines);
+        }
         
-        // Create a new array of lines with the new code replacing the original
-        const newLines = [
-          ...lines.slice(0, startLine),                   // Lines before the change
-          ...message.revertedChangeDetails.newCode.split('\n'), // The new code to reapply
-          ...lines.slice(startLine + originalLinesCount)  // Lines after the change
-        ];
-        
-        // Join the lines back into a single string
-        const reappliedCode = newLines.join('\n');
-        
-        // Apply the change to the editor
+        // Join the lines back together and update the code
+        const reappliedCode = currentLines.join('\n');
         onChange(reappliedCode);
-        console.log("Reapplied change successfully");
+        console.log("Reapplied only new code successfully");
         
-        // Create the reapply message
+        // Create the message confirming the reapply action (now like an apply action)
         const reapplyMessage: Message = {
           id: uuidv4(),
           role: 'assistant',
-          content: `I've reapplied the change: ${message.revertedChangeDetails.description}`,
+          content: `I've reapplied the new code: ${details.description}`,
           timestamp: new Date(),
-          changeDetails: {
-            modificationId: message.revertedChangeDetails.modificationId,
-            description: message.revertedChangeDetails.description,
-            originalCode: message.revertedChangeDetails.originalCode,
-            newCode: message.revertedChangeDetails.newCode,
-            startLine: message.revertedChangeDetails.startLine,
-            endLine: message.revertedChangeDetails.endLine,
-            startCol: message.revertedChangeDetails.startCol,
-            endCol: message.revertedChangeDetails.endCol
+          changeDetails: { // Use changeDetails, as it's now effectively an applied change
+            modificationId: details.modificationId,
+            description: details.description,
+            originalCode: details.originalCode,
+            newCode: details.newCode,
+            startLine: details.startLine,
+            endLine: details.endLine,
+            startCol: details.startCol,
+            endCol: details.endCol
           }
         };
         
-        // Replace the current message with the reapply message
+        // Replace the current "reverted" message with the new "applied" message
         setMessages((prev: Message[]) => {
-          // Filter out this "reverted" message
           const filteredMessages = prev.filter(m => m.id !== message.id);
-          // Add the new reapply message
           return [...filteredMessages, reapplyMessage];
         });
         
-        // Close the expanded view since we're removing this message
         setIsExpanded(false);
       } catch (error) {
-        console.error("Error reapplying change:", error);
-        alert("Failed to reapply the change. Please check the console for details.");
+        console.error("Error reapplying new code:", error);
+        alert("Failed to reapply the new code. Please check the console for details.");
       }
     };
     
@@ -626,47 +786,51 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
       }
       
       try {
-        // We've confirmed onChange works, so now let's implement the actual revert
+        // For reverting, we want to remove only the added/modified ("green") lines
+        console.log('REVERT (Delete Green) - ORIGINAL CODE:', message.changeDetails.originalCode);
+        console.log('REVERT (Delete Green) - NEW CODE (contains green):', message.changeDetails.newCode);
+        
+        const originalCodeLines = message.changeDetails.originalCode.split('\n');
+        const newCodeLines = message.changeDetails.newCode.split('\n');
+        const originalCodeSet = new Set(originalCodeLines.map(line => line.trim())); // Trim for comparison
+        
         const currentCode = codeRef.current;
-        const startLine = message.changeDetails.startLine - 1; // Convert to 0-based index
-        
-        // Get the lines of code
         const lines = currentCode.split('\n');
+        const startLine = message.changeDetails.startLine;
+        const numNewLines = newCodeLines.length; // The number of lines in the applied change
+        const endLineIndex = startLine - 1 + numNewLines; // Zero-based index for splice end
+
+        // Get the section of current code corresponding to the applied change
+        const affectedLines = lines.slice(startLine - 1, endLineIndex);
+
+        // Filter affected lines, keeping only those that were part of the original code
+        const linesToKeep = affectedLines.filter(line => originalCodeSet.has(line.trim()));
         
-        // For this simple implementation, we'll replace the lines directly
-        // Calculate how many lines the modified code takes up
-        const modifiedLinesCount = message.changeDetails.newCode.split('\n').length;
-        
-        // Remove the modified lines and insert the original code lines
-        const originalLines = message.changeDetails.originalCode.split('\n');
-        
-        // Create a new array of lines with the original code replaced
-        const newLines = [
-          ...lines.slice(0, startLine),                  // Lines before the change
-          ...originalLines,                              // The original code
-          ...lines.slice(startLine + modifiedLinesCount) // Lines after the change
-        ];
+        // Replace the affected section with the filtered lines (removing the green ones)
+        lines.splice(startLine - 1, numNewLines, ...linesToKeep);
         
         // Join the lines back into a single string
-        const revertedCode = newLines.join('\n');
+        const revertedCode = lines.join('\n');
         
         // Apply the change to the editor
         onChange(revertedCode);
-        console.log("Reverted code applied successfully");
+        console.log("Removed newly added code successfully");
         
         // Create the revert message
         const revertMessage: Message = {
           id: uuidv4(),
           role: 'assistant',
-          content: `I've reverted the change: ${message.changeDetails.description}`,
+          content: `I've removed the newly added code from: ${message.changeDetails.description}`,
           timestamp: new Date(),
+          // Keep revertedChangeDetails to allow reapply if needed
           revertedChangeDetails: {
             modificationId: message.changeDetails.modificationId,
             description: message.changeDetails.description,
-            originalCode: message.changeDetails.originalCode,
-            newCode: message.changeDetails.newCode,
+            originalCode: message.changeDetails.originalCode, // Store the original
+            newCode: message.changeDetails.newCode, // Store what was applied
             startLine: message.changeDetails.startLine,
-            endLine: message.changeDetails.endLine,
+            // Adjust end line based on lines kept? No, keep original for context
+            endLine: message.changeDetails.endLine, 
             startCol: message.changeDetails.startCol,
             endCol: message.changeDetails.endCol
           }
@@ -674,17 +838,14 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
         
         // Replace the current message with the revert message
         setMessages((prev: Message[]) => {
-          // Filter out this "applied" message (the one being reverted)
           const filteredMessages = prev.filter(m => m.id !== message.id);
-          // Add the new revert message
           return [...filteredMessages, revertMessage];
         });
         
-        // Close the expanded view since we're removing this message
         setIsExpanded(false);
       } catch (error) {
-        console.error("Error reverting change:", error);
-        alert("Failed to revert the change. Please check the console for details.");
+        console.error("Error removing added code:", error);
+        alert("Failed to remove the added code. Please check the console for details.");
       }
     };
     
@@ -764,25 +925,32 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
                   Revert Change
                 </button>
               </div>
-              <div className="flex flex-col space-y-2">
-                <div className="bg-red-50 dark:bg-red-900/20 rounded p-3">
-                  <div className="text-xs text-red-800 dark:text-red-300 mb-1">
-                    Original Code (Lines {message.changeDetails.startLine}-{message.changeDetails.endLine}):
+              
+              <div className="bg-zinc-50 dark:bg-zinc-900 rounded p-3">
+                <div className="text-xs text-zinc-800 dark:text-zinc-300 mb-1">
+                  <span>Modified Code (Lines {message.changeDetails.startLine}-{message.changeDetails.endLine}):</span>
+                  <div className="flex items-center mt-1 space-x-4 text-2xs">
+                    <div className="flex items-center">
+                      <span className="inline-block w-3 h-3 mr-1 bg-red-500 rounded-sm"></span>
+                      <span>Existing code</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="inline-block w-3 h-3 mr-1 bg-green-500 rounded-sm"></span>
+                      <span>New or modified code</span>
+                    </div>
                   </div>
-                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-                    <code className="block max-w-full">
-                      {message.changeDetails.originalCode}
-                    </code>
-                  </pre>
                 </div>
-                <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
-                  <div className="text-xs text-green-800 dark:text-green-300 mb-1">New Code:</div>
-                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-                    <code className="block max-w-full">
-                      {message.changeDetails.newCode}
-                    </code>
-                  </pre>
-                </div>
+                <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                  <code 
+                    className="block max-w-full" 
+                    dangerouslySetInnerHTML={{ 
+                      __html: prepareUnifiedCodeView(
+                        message.changeDetails.originalCode, 
+                        message.changeDetails.newCode
+                      ) 
+                    }}
+                  ></code>
+                </pre>
               </div>
             </div>
           )}
@@ -803,25 +971,32 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
                   Reapply Change
                 </button>
               </div>
-              <div className="flex flex-col space-y-2">
-                <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
-                  <div className="text-xs text-green-800 dark:text-green-300 mb-1">
-                    Original Code (Lines {message.revertedChangeDetails.startLine}-{message.revertedChangeDetails.endLine}):
+              
+              <div className="bg-zinc-50 dark:bg-zinc-900 rounded p-3">
+                <div className="text-xs text-zinc-800 dark:text-zinc-300 mb-1">
+                  <span>Original Code That Could Be Reapplied (Lines {message.revertedChangeDetails.startLine}-{message.revertedChangeDetails.endLine}):</span>
+                  <div className="flex items-center mt-1 space-x-4 text-2xs">
+                    <div className="flex items-center">
+                      <span className="inline-block w-3 h-3 mr-1 bg-red-500 rounded-sm"></span>
+                      <span>Existing code</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="inline-block w-3 h-3 mr-1 bg-green-500 rounded-sm"></span>
+                      <span>New or modified code</span>
+                    </div>
                   </div>
-                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-                    <code className="block max-w-full">
-                      {message.revertedChangeDetails.originalCode}
-                    </code>
-                  </pre>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-3">
-                  <div className="text-xs text-blue-800 dark:text-blue-300 mb-1">Code That Could Be Reapplied:</div>
-                  <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-                    <code className="block max-w-full">
-                      {message.revertedChangeDetails.newCode}
-                    </code>
-                  </pre>
-                </div>
+                <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
+                  <code 
+                    className="block max-w-full" 
+                    dangerouslySetInnerHTML={{ 
+                      __html: prepareUnifiedCodeView(
+                        message.revertedChangeDetails.originalCode, 
+                        message.revertedChangeDetails.newCode
+                      ) 
+                    }}
+                  ></code>
+                </pre>
               </div>
             </div>
           )}
@@ -835,6 +1010,100 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
 
   // Render a code modification with accept/reject options
   const renderModification = (mod: CodeModification) => {
+    // Prepare a unified code view with highlighted changes
+    const prepareUnifiedCodeView = () => {
+      // These are the code lines before and after the change
+      const oldCodeLines = mod.originalCode.split('\n');
+      const newCodeLines = mod.newCode.split('\n');
+      
+      // Create a unified view with proper highlighting
+      return newCodeLines.map((line, idx) => {
+        if (line.trim() === '') {
+          // Handle empty lines
+          return line;
+        }
+        
+        // Check if this line exists in the original code
+        // First do an exact match check
+        if (oldCodeLines.some(oldLine => oldLine === line)) {
+          return `<span class="text-red-600 dark:text-red-400">${escapeHtml(line)}</span>`;
+        }
+        
+        // If not an exact match, check for lines that are very similar (e.g. minor attribute changes)
+        for (const oldLine of oldCodeLines) {
+          // Skip empty lines
+          if (oldLine.trim() === '') continue;
+          
+          // If lines are substantially similar (e.g. same tag structure but different attributes)
+          // Check if both lines contain opening tags of the same type
+          const oldTagMatch = oldLine.match(/<([a-z0-9]+)[\s>]/i);
+          const newTagMatch = line.match(/<([a-z0-9]+)[\s>]/i);
+          
+          if (oldTagMatch && newTagMatch && oldTagMatch[1] === newTagMatch[1]) {
+            // Split the line into segments for more granular highlighting
+            // This approach allows us to highlight just the changed parts within a similar line
+            const changes = analyzeLineChanges(oldLine, line);
+            return changes;
+          }
+        }
+          
+        // If no match found, it's truly new content
+        return `<span class="text-green-600 dark:text-green-400">${escapeHtml(line)}</span>`;
+      }).join('\n');
+    };
+    
+    // Helper to analyze changes between two similar lines
+    const analyzeLineChanges = (oldLine: string, newLine: string): string => {
+      // A simple approach: Break lines into chunks and compare
+      // In a real implementation, you might want a more sophisticated diff algorithm
+      
+      // If one line is significantly longer than the other, just treat it as modified
+      if (Math.abs(oldLine.length - newLine.length) > oldLine.length * 0.5) {
+        return `<span class="text-green-600 dark:text-green-400">${escapeHtml(newLine)}</span>`;
+      }
+      
+      // A simple approach for HTML lines: split by attribute boundaries
+      const oldParts = oldLine.split(/\s+(?=[a-z\-]+=)/i);
+      const newParts = newLine.split(/\s+(?=[a-z\-]+=)/i);
+      
+      let result = '';
+      
+      // Handle the tag name part (first segment)
+      if (oldParts[0] === newParts[0]) {
+        result += `<span class="text-red-600 dark:text-red-400">${escapeHtml(newParts[0])}</span>`;
+      } else {
+        result += `<span class="text-green-600 dark:text-green-400">${escapeHtml(newParts[0])}</span>`;
+      }
+      
+      // Process the rest (attributes)
+      for (let i = 1; i < newParts.length; i++) {
+        const newPart = newParts[i];
+        
+        // Check if this attribute exists in old line
+        const exactMatch = oldParts.includes(newPart);
+        
+        if (exactMatch) {
+          // Existing attribute, unchanged
+          result += ` <span class="text-red-600 dark:text-red-400">${escapeHtml(newPart)}</span>`;
+        } else {
+          // New or modified attribute
+          result += ` <span class="text-green-600 dark:text-green-400">${escapeHtml(newPart)}</span>`;
+        }
+      }
+      
+      return result;
+    };
+    
+    // Helper to escape HTML for safe rendering
+    const escapeHtml = (str: string): string => {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+
     return (
       <div key={mod.id} className="border-l-4 border-blue-500 pl-2 my-4">
         <div className="flex items-center justify-between mb-2">
@@ -849,12 +1118,12 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
               <button
                 onClick={() => applyModification(mod.id)}
                 className="flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800 hover:bg-green-200"
-                title="Apply this change"
+                title="Apply only the green highlighted code"
               >
                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Apply
+                Apply New Code
               </button>
               <button
                 onClick={() => rejectModification(mod.id)}
@@ -870,21 +1139,23 @@ const CodeAssistant: React.FC<CodeAssistantProps> = ({
           )}
         </div>
         <div className="text-sm mb-2">{mod.description}</div>
-        <div className="flex flex-col space-y-2">
-          <div className="bg-red-50 dark:bg-red-900/20 rounded p-3">
-            <div className="text-xs text-red-800 dark:text-red-300 mb-1">Original Code (Lines {mod.startLine}-{mod.endLine}):</div>
+        <div>
+          <div className="bg-zinc-50 dark:bg-zinc-900 rounded p-3">
+            <div className="text-xs text-zinc-800 dark:text-zinc-300 mb-1">
+              <span>Modified Code (Lines {mod.startLine}-{mod.endLine}):</span>
+              <div className="flex items-center mt-1 space-x-4 text-2xs">
+                <div className="flex items-center">
+                  <span className="inline-block w-3 h-3 mr-1 bg-red-500 rounded-sm"></span>
+                  <span>Existing code</span>
+                </div>
+                <div className="flex items-center">
+                  <span className="inline-block w-3 h-3 mr-1 bg-green-500 rounded-sm"></span>
+                  <span>New code to apply</span>
+                </div>
+              </div>
+            </div>
             <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-              <code className="block max-w-full">
-                {mod.originalCode}
-              </code>
-            </pre>
-          </div>
-          <div className="bg-green-50 dark:bg-green-900/20 rounded p-3">
-            <div className="text-xs text-green-800 dark:text-green-300 mb-1">New Code:</div>
-            <pre className="text-sm w-full overflow-x-auto whitespace-pre-wrap">
-              <code className="block max-w-full">
-                {mod.newCode}
-              </code>
+              <code className="block max-w-full" dangerouslySetInnerHTML={{ __html: prepareUnifiedCodeView() }}></code>
             </pre>
           </div>
         </div>
